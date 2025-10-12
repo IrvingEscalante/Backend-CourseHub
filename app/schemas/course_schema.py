@@ -1,0 +1,76 @@
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
+from app.schemas.rating_comments_model import RatingCommentsCourseResponse
+
+
+class AuthorResponse(BaseModel):
+    id: int
+    username: str
+    name: str
+    lastname: str
+    photo: Optional[str] = None 
+
+
+    class Config:
+        from_attributes = True  
+
+
+class CourseBase(BaseModel):
+    name_course: str
+    description_course: str
+    image: str
+    is_forked: bool
+    id_theme: int
+    status_course: Optional[bool] = True
+
+
+class CourseCreate(CourseBase):
+    pass
+
+class CourseResponse(BaseModel):
+    id_course: int
+    name_course: str
+    description_course: str
+    image: str
+    id_user: int
+    is_forked:bool
+    id_author_user: int
+    status_course: bool
+    date_created: datetime
+    avg_rating: float = 0
+    ratings_count: int = 0
+    date_updated: Optional[datetime] = None
+    author: Optional[AuthorResponse] = None 
+    user: Optional[AuthorResponse] = None
+
+    class Config:
+        from_attributes = True  
+
+class CourseUpdate(BaseModel):
+    name_course: Optional[str] = None
+    description_course: Optional[str] = None
+    image: Optional[str] = None
+    id_user: Optional[int] = None
+    is_forked: Optional[bool] = None
+    id_author_user: Optional[int] = None
+    id_theme: Optional[int] = None
+    status_course: Optional[bool] = None
+    date_updated: Optional[datetime] = None
+
+
+class CourseInDBBase(CourseBase):
+    id_course: int
+    date_created: datetime
+    date_updated: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True  # antes orm_mode=True
+
+
+class Course(CourseInDBBase):
+    pass
+
+
+class CourseInDB(CourseInDBBase):
+    pass

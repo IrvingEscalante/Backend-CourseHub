@@ -1,32 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy import or_
+from fastapi.security import OAuth2PasswordRequestForm
 from app.db.session import get_db
-from app.models.auth.user import User
-from app.models.auth.email_verification import EmailVerification  
-import random
-from app.schemas.user_schema import UserCreate, UserOut, Token
+from app.models.user import User
+from app.models.email_verification import EmailVerification  
+import random 
+from app.schemas.user_schema import UserCreate, Token, UserPrivateOut
 from app.schemas.verify_email import VerifyEmail
 from app.utils.security import hash_password, verify_password, create_access_token
 from datetime import datetime, timedelta
 from app.services.email_services import send_verification_email
-from app.models.generic_response_model import ResponseModel
+from app.schemas.messageOut import MessageOut
+from app.schemas.verify_email import EmailIn
+from app.utils.security import decrypt_email, encrypt_email
+
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def generate_code():
     return f"{random.randint(100000, 999999)}"
 
-@router.post("/register", response_model=ResponseModel[UserOut])
+
+@router.post("/register", response_model=UserPrivateOut)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     db_email = db.query(User).filter(User.email == user.email).first()
     if db_email:
-        return ResponseModel(success=False, message="El correo ya está registrado")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El correo ya está registrado"
+        )
 
     db_user = db.query(User).filter(User.username == user.username).first()
     if db_user:
-        return ResponseModel(success=False, message="El usuario ya está registrado")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario ya está registrado"
+        )
 
     new_user = User(username=user.username, name=user.name, lastname=user.lastname, email=user.email, hashed_password=hash_password(user.password))
     db.add(new_user)
@@ -39,28 +49,34 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     )
     db.add(verification)
     db.commit()
+    full_name = user.name + ' ' + user.lastname
+    email_encrypted = encrypt_email(user.email)
+    link = f"http://localhost:4200/verify-email?token={email_encrypted}"
+
     #  Enviar correo
-    await send_verification_email(user.email, code)
-    return ResponseModel(success=True, data=new_user)
+    await send_verification_email(user.email, code, full_name, link)
+    return new_user
 
 # Iniciar sesión
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
+    user = db.query(User).filter(or_(User.email == form_data.username, User.username == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     if not user.status:
         raise HTTPException(status_code=401, detail="La cuenta aun no ha sido verificada")
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"user_id": user.id})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/verify-email", response_model=ResponseModel[None])
+@router.post("/verify-email", response_model=MessageOut)
 def verify_email(data: VerifyEmail, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    email_decrypted = decrypt_email(data.email)
+    user = db.query(User).filter(User.email == email_decrypted).first()
     if not user:
-        return ResponseModel(success = False, message = "Usuario no encontrado")
-    
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.status:
+        raise HTTPException(status_code=404, detail="Tu correo ya esta verificado")
     verification = (
         db.query(EmailVerification)
         .filter(
@@ -73,21 +89,27 @@ def verify_email(data: VerifyEmail, db: Session = Depends(get_db)):
     )
 
     if not verification:
-        return ResponseModel(success = False, message = "Código invalido o expirado")
+        raise HTTPException(status_code=404, detail="Codigo invalido o expirado")
     
     verification.is_used = True
     user.status = True
     db.commit()
 
-    return ResponseModel(success = True, message = "Correo verificado correctamente")
+    return {
+        "success": True,
+        "message": "Codigo verificado correctamente"}
 
 
-@router.post("/resend-code")
-async def resend_code(email: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email).first()
+
+@router.post("/resend-code", response_model=MessageOut)
+async def resend_code(data:EmailIn, db: Session = Depends(get_db)):
+    email_decrypted = decrypt_email(data.email)
+    user = db.query(User).filter(User.email == email_decrypted).first()
     if not user:
-        return ResponseModel(success=False, message="Usuario no encontrado")
-    
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.status:
+        raise HTTPException(status_code=404, detail="Tu correo ya esta verificado")
+
     # Obtener el último código enviado para este usuario
     last_verification = (
         db.query(EmailVerification)
@@ -99,8 +121,8 @@ async def resend_code(email: str, db: Session = Depends(get_db)):
     # Verificar si pasó suficiente tiempo desde el último envío
     if last_verification and last_verification.last_code_sent_at:
         elapsed_seconds = (datetime.now() - last_verification.last_code_sent_at).total_seconds()
-        if elapsed_seconds < 300:  # 5 minutos
-            return ResponseModel(success=False, message="Espera 5 minutos antes de pedir otro código")
+        if elapsed_seconds < 30:
+            raise HTTPException(status_code=404, detail="Espera 30 segundos antes de pedir otro código")
     
     # Invalidar códigos antiguos
     db.query(EmailVerification).filter(
@@ -114,12 +136,15 @@ async def resend_code(email: str, db: Session = Depends(get_db)):
         user_id=user.id,
         code=code,
         expires_at=datetime.now() + timedelta(minutes=10),
-        last_code_sent_at=datetime.now()
+        last_code_sent_at = datetime.now()
     )
     db.add(new_verification)
     db.commit()
 
+    full_name = user.name + ' ' + user.lastname
     # Enviar correo con el nuevo código
-    await send_verification_email(user.email, code)
+    await send_verification_email(email_decrypted, code, full_name)
 
-    return ResponseModel(success=True, message="Se ha enviado un nuevo código")
+    return {
+        "success": True,
+        "message": "Se ha reenviado el codigo de confirmación"}
