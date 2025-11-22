@@ -39,7 +39,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 SECRET_KEY_EMAIL = b"clave-secreta123"  # Debe ser de 16, 24 o 32 bytes
 
 def encrypt_email(email: str) -> str:
-    cipher = AES.new(SECRET_KEY_EMAIL, AES.MODE_ECB)
+    cipher = AES.new(settings.SECRET_KEY, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad(email.encode('utf-8'), AES.block_size))
     return base64.urlsafe_b64encode(encrypted).decode('utf-8')
 

@@ -33,9 +33,10 @@ class CourseResponse(BaseModel):
     name_course: str
     description_course: str
     image: str
-    id_user: int
     is_forked:bool
-    id_author_user: int
+    is_my_course:bool = False
+    is_favorite: bool = False
+    is_my_favorite:bool = False
     status_course: bool
     date_created: datetime
     avg_rating: float = 0

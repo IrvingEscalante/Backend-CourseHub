@@ -23,7 +23,7 @@ class Course(Base):
     author = relationship("User", foreign_keys=[id_author_user], back_populates="authored_courses")
     theme = relationship("Theme", back_populates="courses")
     modules = relationship("ModuleCourse", back_populates="course")
-    favorites = relationship("Favorites", back_populates="course")
+    favorites = relationship("Favorites", back_populates="course_favorites")
     pull_requests_source = relationship("PullRequest", back_populates="course_source", foreign_keys='PullRequest.id_course_source')
     pull_requests_target = relationship("PullRequest", back_populates="course_target", foreign_keys='PullRequest.id_course_target')
     rating = relationship("RatingCommentsCourse", back_populates="course_rating")

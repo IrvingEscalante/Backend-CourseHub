@@ -28,6 +28,8 @@ class User(Base):
     rating = relationship("RatingCommentsCourse", back_populates="user_rating")
     notifications_sent = relationship("Notification", foreign_keys="[Notification.id_sender]", back_populates="sender")
     notifications_received = relationship("Notification", foreign_keys="[Notification.id_user]", back_populates="receiver")
-    
+    following = relationship("Followers", foreign_keys="[Followers.id_user]", back_populates="follower", cascade="all, delete-orphan")
+    followers = relationship("Followers", foreign_keys="[Followers.id_user_follow]", back_populates="followed", cascade="all, delete-orphan")
+    recover_tokens = relationship("RecoverPassword", back_populates="user")
 
 

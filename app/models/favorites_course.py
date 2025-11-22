@@ -11,4 +11,4 @@ class Favorites(Base):
     id_course = Column(Integer, ForeignKey("course.id_course"))
 
     user = relationship("User", back_populates="favorites")
-    course = relationship("Course", back_populates="favorites")
+    course_favorites = relationship("Course", back_populates="favorites")

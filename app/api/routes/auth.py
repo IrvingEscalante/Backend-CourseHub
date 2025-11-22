@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.db.session import get_db
 from app.models.user import User
 from app.models.email_verification import EmailVerification  
-import random 
+import random
 from app.schemas.user_schema import UserCreate, Token, UserPrivateOut
 from app.schemas.verify_email import VerifyEmail
 from app.utils.security import hash_password, verify_password, create_access_token
@@ -148,3 +148,6 @@ async def resend_code(data:EmailIn, db: Session = Depends(get_db)):
     return {
         "success": True,
         "message": "Se ha reenviado el codigo de confirmación"}
+
+
+

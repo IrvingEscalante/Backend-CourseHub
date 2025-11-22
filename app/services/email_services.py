@@ -53,3 +53,34 @@ async def send_verification_email(to_email: str, code: str, full_name_user, link
     fm = FastMail(conf)
     await fm.send_message(message)
 
+
+async def send_recover_password(to_email: str, link_recover_password: str = ""):
+    html_content = f"""
+    <div style="font-family: Segoe UI, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #121C2D;">
+        <h1 style="text-align:center; color:#fff">CourseHub</h1>
+        <h2 style="color: #fff; text-align: center;">Recupera tu contraseña</h2>
+        <div>
+  
+            <a href="{ link_recover_password }">Entra a este enlace para cambiar tu contraseña</a>
+
+        </div>
+        <p style="font-size: 14px; color: #fff;">
+            Este código expirará en 10 minutos. <br>
+            Si no solicitaste este código, puedes ignorar este correo.
+        </p>
+        <hr style="border: none; border-top: 2px solid #2D3A4F; margin: 20px 0;">
+        <p style="font-size: 12px; color: #fff; text-align: center;">
+            CourseHub &copy; {datetime.now().year}. Todos los derechos reservados.
+        </p>
+    </div>
+    """
+
+    message = MessageSchema(
+        subject="Recupera tu cuenta",
+        recipients=[to_email],
+        body=html_content,
+        subtype="html"
+    )
+
+    fm = FastMail(conf)
+    await fm.send_message(message)

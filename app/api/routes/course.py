@@ -7,7 +7,8 @@ from app.models.user import User
 from app.models.course import Course
 from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.theme import Theme
-from typing import List
+from app.models.favorites_course import Favorites
+from typing import List, Optional
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse
 router = APIRouter()
 
@@ -30,9 +31,10 @@ def get_courses_feed(
     type_query: str = Query("all", enum=["all", "new", "popular", "trending"]),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
 ):
-    # Consulta base: calculamos avg_rating y ratings_count
+    # Consulta base: avg_rating y ratings_count
     query = (
         db.query(
             Course,
@@ -49,12 +51,18 @@ def get_courses_feed(
     elif type_query == "popular":
         query = query.order_by(func.count(RatingCommentsCourse.id_ratings_comments).desc())
     elif type_query == "trending":
-        # Definir lógica de trending; por ahora ordenamos por creación
         query = query.order_by(Course.date_created.desc())
 
     # Paginación
     offset = (page - 1) * limit
     results = query.offset(offset).limit(limit).all()
+
+    # IDs de cursos favoritos del usuario autenticado
+    my_favorite_ids: List[int] = []
+    if current_user:
+        my_favorite_ids = [
+            fav.id_course for fav in db.query(Favorites).filter(Favorites.id_user == current_user.id).all()
+        ]
 
     # Construimos la respuesta
     course_list = [
@@ -68,6 +76,7 @@ def get_courses_feed(
             id_author_user=c.id_author_user,
             id_theme=c.id_theme,
             status_course=c.status_course,
+            is_my_favorite=c.id_course in my_favorite_ids,
             date_created=c.date_created,
             date_updated=c.date_updated,
             avg_rating=float(avg_rating),
@@ -79,3 +88,5 @@ def get_courses_feed(
     ]
 
     return course_list
+
+

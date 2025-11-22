@@ -3,6 +3,13 @@ from datetime import datetime
 from typing import Optional, List
 from app.schemas.course_schema import CourseResponse
 
+class UserOut(BaseModel):
+    username:str
+    name: str
+    lastname:str
+    email: str
+    photo:str | None = None
+
 class UserCreate(BaseModel):
     username: str
     name: str
@@ -18,7 +25,12 @@ class UserPublicOut(BaseModel):
     photo: Optional[str] = None
     biography: Optional[str] = None
     date_joined: Optional[datetime] = None
-    courses: List[CourseResponse] = [] 
+    followers_count : Optional[int] = None
+    following_count : Optional[int] = None
+    following : Optional[bool] = None
+    mutual : Optional[bool] = None
+    courses_create: List[CourseResponse] = [] 
+    courses_favorites: List[CourseResponse] = []
 
     class Config:
         from_attributes = True
@@ -30,7 +42,12 @@ class UserPrivateOut(UserPublicOut):
     class Config:
         from_attributes = True
 
-
+class UserFollow(BaseModel):
+    username:str
+    name:str
+    lastname:str
+    photo:str | None = None
+    following:bool
 
 class Token(BaseModel):
     access_token: str
