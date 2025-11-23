@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
+    CLOUD_NAME:str
+    API_KEY_CLOUDINARY:str
+    API_SECRET_CLOUDINARY:str
     
 
     class Config:

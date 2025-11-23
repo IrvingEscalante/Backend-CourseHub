@@ -10,4 +10,4 @@ class ContentCoursePublish(Base):
     content = Column(String(500), nullable=False)
     status = Column(Boolean, nullable=False)
 
-    course_publish = relationship("CoursePublish", back_populates="publish")
+    course_publish = relationship("CoursePublish", back_populates="content")

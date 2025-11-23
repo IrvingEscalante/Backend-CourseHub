@@ -75,3 +75,33 @@ class Course(CourseInDBBase):
 
 class CourseInDB(CourseInDBBase):
     pass
+
+# schemas/course.py
+from pydantic import BaseModel
+from typing import List, Optional
+
+
+class ResourcePayload(BaseModel):
+    type: str   # image, pdf, pptx, video, note
+    value: Optional[str] = None
+    fileKey: Optional[str] = None
+    fileName: Optional[str] = None
+
+
+class PublicationPayload(BaseModel):
+    title: str
+    description: str
+    resources: List[ResourcePayload]
+
+
+class ModulePayload(BaseModel):
+    title: str
+    description: str
+    publications: List[PublicationPayload]
+
+
+class CoursePayload(BaseModel):
+    title: str
+    topic: Optional[str]
+    description: Optional[str]
+    modules: List[ModulePayload]

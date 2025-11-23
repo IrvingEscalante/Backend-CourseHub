@@ -15,4 +15,4 @@ class CoursePublish(Base):
     status_publish = Column(Boolean, nullable=False)
 
     module = relationship("ModuleCourse", back_populates="course_publish")
-    publish = relationship("ContentCoursePublish", back_populates="course_publish")
+    content = relationship("ContentCoursePublish", back_populates="course_publish")
