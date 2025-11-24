@@ -102,6 +102,6 @@ class ModulePayload(BaseModel):
 
 class CoursePayload(BaseModel):
     title: str
-    topic: Optional[str]
+    topic: Optional[int]
     description: Optional[str]
     modules: List[ModulePayload]

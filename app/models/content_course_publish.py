@@ -9,5 +9,6 @@ class ContentCoursePublish(Base):
     id_course_publish = Column(Integer, ForeignKey("course_publish.id_course_publish"))
     content = Column(String(500), nullable=False)
     status = Column(Boolean, nullable=False)
+    type_content = Column(String(45))
 
     course_publish = relationship("CoursePublish", back_populates="content")

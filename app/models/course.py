@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from app.models.theme import Theme
@@ -9,7 +9,7 @@ class Course(Base):
 
     id_course = Column(Integer, primary_key=True, autoincrement=True, index=True)
     name_course = Column(String(50), nullable=False)
-    description_course = Column(String(100), nullable=False)
+    description_course = Column(Text, nullable=False)
     image = Column(String(200), nullable=False)
     id_user = Column(Integer, ForeignKey("user.id"))
     is_forked = Column(Boolean, nullable=False)

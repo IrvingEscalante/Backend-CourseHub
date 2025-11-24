@@ -82,7 +82,7 @@ async def create_course(
         image=cover_url,
         id_user=current_user.id,
         id_author_user=current_user.id,
-        id_theme=1,
+        id_theme=data.topic,
         is_forked=False,
         status_course=True
     )
@@ -120,7 +120,7 @@ async def create_course(
                 content_value = None
 
                 # 1. Si es archivo subido
-                if res.type in ["image", "pdf", "pptx", "video"]:
+                if res.type in ["image", "pdf", "pptx", "docx", "video", "raw"]:
 
                     file_key = res.fileKey
 
@@ -129,32 +129,45 @@ async def create_course(
 
                     file = files_dict[file_key]
 
-                    # Detectar resource_type correcto
-                    resource_type = "raw"
+                    # === IMAGES → Cloudinary ===
                     if res.type == "image":
-                        resource_type = "image"
-                    elif res.type == "video":
-                        resource_type = "video"
+                        upload_result = cloudinary.uploader.upload(
+                            file.file,
+                            folder="courses/resources",
+                            resource_type="image",
+                        )
+                        content_value = upload_result["secure_url"]
+                        type_content = "image"
 
-                    upload_result = cloudinary.uploader.upload(
-                        file.file,
-                        folder="courses/resources",
-                        resource_type=resource_type
-                    )
+                    # === PDF / PPTX / DOCX / RAW → Guardado local ===
+                    else:
+                        ext = file.filename.split(".")[-1].lower()
+                        filename = f"{pub.id_course_publish}_{file_key}.{ext}"
 
-                    content_value = upload_result["secure_url"]
+                        save_path = f"static/courses/resources/{filename}"
+
+                        # Guardar archivo en el servidor
+                        with open(save_path, "wb") as buffer:
+                            buffer.write(await file.read())
+
+                        # URL pública del archivo
+                        content_value = f"/static/courses/resources/{filename}"
+                        type_content = ext
 
                 else:
-                    # 2. Si es texto o link de video
+                    # contenido no archivo (texto, embeds, etc.)
                     content_value = res.value
+                    type_content = "text"
 
-                # Guardar contenido en BD
                 content = ContentCoursePublish(
                     id_course_publish=pub.id_course_publish,
                     content=content_value,
-                    status=True
+                    status=True,
+                    type_content=type_content
                 )
+                
                 db.add(content)
+
 
 
     db.commit()

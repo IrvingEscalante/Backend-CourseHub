@@ -1,8 +1,9 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.api.routes import auth
 from app.db.session import Base, engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import course, detail_course, users
+from app.api.routes import course, detail_course, users, theme
 import app.models 
 #Crear tablas en mysql si no existen
 
@@ -20,8 +21,9 @@ app.add_middleware(
     allow_methods=["*"],            # permite GET, POST, OPTIONS, etc.
     allow_headers=["*"],            # permite todos los headers
 )
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(course.router, prefix="/api/course", tags=["Course"])
 app.include_router(detail_course.router, prefix="/api/detail_course", tags=["DetailCourse"])
+app.include_router(theme.router, prefix="/api/theme", tags=["Themes"])
