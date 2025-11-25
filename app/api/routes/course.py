@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, Form, File, Request
+from sqlalchemy import or_
 from app.utils.security import get_current_user
 from sqlalchemy import func
 import json
@@ -177,26 +178,42 @@ async def create_course(
         "course_id": new_course.id_course
     }
 
+
+
 @router.get("/courses", response_model=List[CourseResponse])
 def get_courses_feed(
     type_query: str = Query("all", enum=["all", "new", "popular", "trending"]),
+    search: str = Query(None, min_length=1),   # <-- búsqueda
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    # Consulta base: avg_rating y ratings_count
+    # Consulta base
     query = (
         db.query(
             Course,
             func.coalesce(func.avg(RatingCommentsCourse.rating), 0).label("avg_rating"),
             func.count(RatingCommentsCourse.id_ratings_comments).label("ratings_count")
         )
-        .outerjoin(RatingCommentsCourse, (RatingCommentsCourse.id_course == Course.id_course) & (RatingCommentsCourse.status == True))
+        .outerjoin(RatingCommentsCourse, 
+            (RatingCommentsCourse.id_course == Course.id_course) & 
+            (RatingCommentsCourse.status == True)
+        )
         .group_by(Course.id_course)
     )
 
-    # Orden según tipo de consulta
+    # === 🔍 APLICAR BÚSQUEDA POR TEXTO ===
+    if search:
+        search_like = f"%{search}%"
+        query = query.filter(
+            or_(
+                Course.name_course.ilike(search_like),
+                Course.description_course.ilike(search_like)
+            )
+        )
+
+    # === 🔥 ORDEN SEGÚN TIPO ===
     if type_query == "new":
         query = query.order_by(Course.date_created.desc())
     elif type_query == "popular":
@@ -204,18 +221,19 @@ def get_courses_feed(
     elif type_query == "trending":
         query = query.order_by(Course.date_created.desc())
 
-    # Paginación
+    # === 📄 PAGINACIÓN ===
     offset = (page - 1) * limit
     results = query.offset(offset).limit(limit).all()
 
-    # IDs de cursos favoritos del usuario autenticado
+    # === ⭐ FAVORITOS ===
     my_favorite_ids: List[int] = []
     if current_user:
         my_favorite_ids = [
-            fav.id_course for fav in db.query(Favorites).filter(Favorites.id_user == current_user.id).all()
+            fav.id_course 
+            for fav in db.query(Favorites).filter(Favorites.id_user == current_user.id).all()
         ]
 
-    # Construimos la respuesta
+    # === 📦 ARMAR RESPUESTA ===
     course_list = [
         CourseResponse(
             id_course=c.id_course,
@@ -239,5 +257,3 @@ def get_courses_feed(
     ]
 
     return course_list
-
-

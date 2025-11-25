@@ -3,14 +3,14 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import auth
 from app.db.session import Base, engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import course, detail_course, users, theme
+from app.api.routes import course, detail_course, users, theme, rating_comments
 import app.models 
 #Crear tablas en mysql si no existen
 
 app=FastAPI(title="CourseHub")
 
 origins = [
-    "http://localhost:5173",  # tu frontend Angular
+    "http://localhost:4200",  # tu frontend Angular
     "http://localhost:4200"  # opcio
 ]
 
@@ -27,3 +27,4 @@ app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(course.router, prefix="/api/course", tags=["Course"])
 app.include_router(detail_course.router, prefix="/api/detail_course", tags=["DetailCourse"])
 app.include_router(theme.router, prefix="/api/theme", tags=["Themes"])
+app.include_router(rating_comments.router, prefix="/api/rating_comments", tags=["RatingComments"])
