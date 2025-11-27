@@ -71,12 +71,9 @@ async def create_course(
             public_id=cover.filename
         )
         cover_url = upload_result.get("secure_url")
-        print("COVER URL:", cover_url)
     else:
         print("no hay cover")
 
-
-    # ------------ 1. Crear curso ----------------
     new_course = Course(
         name_course=data.title,
         description_course=data.description or "",
@@ -121,7 +118,7 @@ async def create_course(
                 content_value = None
 
                 # 1. Si es archivo subido
-                if res.type in ["image", "pdf", "pptx", "docx", "video", "raw"]:
+                if res.type in ["image", "archive", "video", "raw"]:
 
                     file_key = res.fileKey
 
@@ -203,7 +200,6 @@ def get_courses_feed(
         .group_by(Course.id_course)
     )
 
-    # === 🔍 APLICAR BÚSQUEDA POR TEXTO ===
     if search:
         search_like = f"%{search}%"
         query = query.filter(
@@ -213,7 +209,6 @@ def get_courses_feed(
             )
         )
 
-    # === 🔥 ORDEN SEGÚN TIPO ===
     if type_query == "new":
         query = query.order_by(Course.date_created.desc())
     elif type_query == "popular":

@@ -10,6 +10,7 @@ class AuthorResponse(BaseModel):
     name: str
     lastname: str
     photo: Optional[str] = None 
+    biography: Optional[str] = None
 
 
     class Config:

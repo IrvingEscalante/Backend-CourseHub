@@ -18,7 +18,7 @@ def get_ratings_by_course(id_course: int, db: Session = Depends(get_db)):
     ratings = db.query(RatingCommentsCourse).filter(
         RatingCommentsCourse.id_course == id_course,
         RatingCommentsCourse.status == True
-    ).all()
+    ).order_by(RatingCommentsCourse.date_created.desc()).all()
 
     if not ratings:
         raise HTTPException(status_code=404, detail="No hay comentarios para este curso")

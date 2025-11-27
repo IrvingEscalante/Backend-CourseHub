@@ -14,6 +14,8 @@ from app.services.email_services import send_verification_email
 from app.schemas.messageOut import MessageOut
 from app.schemas.verify_email import EmailIn
 from app.utils.security import decrypt_email, encrypt_email
+from app.schemas.user_schema import UserOut
+from app.core.config import settings
 
 
 router = APIRouter()
@@ -22,7 +24,7 @@ def generate_code():
     return f"{random.randint(100000, 999999)}"
 
 
-@router.post("/register", response_model=UserPrivateOut)
+@router.post("/register")
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     db_email = db.query(User).filter(User.email == user.email).first()
     if db_email:
@@ -51,11 +53,13 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     full_name = user.name + ' ' + user.lastname
     email_encrypted = encrypt_email(user.email)
-    link = f"http://localhost:4200/verify-email?token={email_encrypted}"
+    link = f"{settings.FRONTEND_URL}/verify-email?token={email_encrypted}"
 
-    #  Enviar correo
     await send_verification_email(user.email, code, full_name, link)
-    return new_user
+    return {
+        "user": new_user,
+        "token_verification": email_encrypted
+    }
 
 # Iniciar sesión
 @router.post("/login", response_model=Token)

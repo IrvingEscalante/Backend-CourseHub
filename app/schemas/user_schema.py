@@ -9,6 +9,8 @@ class UserOut(BaseModel):
     lastname:str
     email: str
     photo:str | None = None
+    biography: str | None = None
+    
 
 class UserCreate(BaseModel):
     username: str

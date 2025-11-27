@@ -50,7 +50,7 @@ def decrypt_email(token: str) -> str:
 
 def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     if authorization is None:
-        return None  # usuario no logueado
+        return None
     try:
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
