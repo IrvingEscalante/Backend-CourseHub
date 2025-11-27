@@ -54,7 +54,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     full_name = user.name + ' ' + user.lastname
     email_encrypted = encrypt_email(user.email)
     link = f"{settings.FRONTEND_URL}/verify-email?token={email_encrypted}"
-
+    print("Este es el link: ", link)
     await send_verification_email(user.email, code, full_name, link)
     return {
         "user": new_user,

@@ -10,8 +10,9 @@ class EmailVerification(Base):
     user_id = Column(Integer, ForeignKey("user.id"))
     code = Column(String(6), nullable=False)
     is_used = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.now())
+    created_at = Column(DateTime, default=datetime.now)
     expires_at = Column(DateTime, default=lambda: datetime.now() + timedelta(minutes=30))
-    last_code_sent_at = Column(DateTime, default=datetime.now())
+    last_code_sent_at = Column(DateTime, default=datetime.now)
+
 
     user = relationship("User", back_populates="verifications")
