@@ -15,6 +15,7 @@ from app.models.content_course_publish import ContentCoursePublish
 from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
 import cloudinary
+from app.services.user_services import get_favorite_ids
 from app.core.config import settings
 import cloudinary.uploader
 from cloudinary.utils import cloudinary_url
@@ -175,31 +176,35 @@ async def create_course(
         "course_id": new_course.id_course
     }
 
-
-
 @router.get("/courses", response_model=List[CourseResponse])
 def get_courses_feed(
     type_query: str = Query("all", enum=["all", "new", "popular", "trending"]),
-    search: str = Query(None, min_length=1),   # <-- búsqueda
+    search: Optional[str] = Query(None, min_length=1),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    # Consulta base
+    # ----------------------------
+    # 1. Consulta base cursos + rating
+    # ----------------------------
     query = (
         db.query(
             Course,
             func.coalesce(func.avg(RatingCommentsCourse.rating), 0).label("avg_rating"),
             func.count(RatingCommentsCourse.id_ratings_comments).label("ratings_count")
         )
-        .outerjoin(RatingCommentsCourse, 
-            (RatingCommentsCourse.id_course == Course.id_course) & 
+        .outerjoin(
+            RatingCommentsCourse,
+            (RatingCommentsCourse.id_course == Course.id_course) &
             (RatingCommentsCourse.status == True)
         )
         .group_by(Course.id_course)
     )
 
+    # ----------------------------
+    # 2. Buscador
+    # ----------------------------
     if search:
         search_like = f"%{search}%"
         query = query.filter(
@@ -209,6 +214,9 @@ def get_courses_feed(
             )
         )
 
+    # ----------------------------
+    # 3. Tipos de ordenamiento
+    # ----------------------------
     if type_query == "new":
         query = query.order_by(Course.date_created.desc())
     elif type_query == "popular":
@@ -216,39 +224,41 @@ def get_courses_feed(
     elif type_query == "trending":
         query = query.order_by(Course.date_created.desc())
 
-    # === 📄 PAGINACIÓN ===
+    # ----------------------------
+    # 4. Paginación
+    # ----------------------------
     offset = (page - 1) * limit
     results = query.offset(offset).limit(limit).all()
 
-    # === ⭐ FAVORITOS ===
-    my_favorite_ids: List[int] = []
-    if current_user:
-        my_favorite_ids = [
-            fav.id_course 
-            for fav in db.query(Favorites).filter(Favorites.id_user == current_user.id).all()
-        ]
+    # ----------------------------
+    # 5. Obtener favoritos del usuario
+    # ----------------------------
+    my_favorite_ids = get_favorite_ids(db, current_user)
 
-    # === 📦 ARMAR RESPUESTA ===
-    course_list = [
-        CourseResponse(
-            id_course=c.id_course,
-            name_course=c.name_course,
-            description_course=c.description_course,
-            image=c.image,
-            id_user=c.id_user,
-            is_forked=c.is_forked,
-            id_author_user=c.id_author_user,
-            id_theme=c.id_theme,
-            status_course=c.status_course,
-            is_my_favorite=c.id_course in my_favorite_ids,
-            date_created=c.date_created,
-            date_updated=c.date_updated,
-            avg_rating=float(avg_rating),
-            ratings_count=ratings_count,
-            author=AuthorResponse.model_validate(c.author) if c.author else None,
-            user=AuthorResponse.model_validate(c.user) if c.user else None
+    # ----------------------------
+    # 6. Construir respuesta final
+    # ----------------------------
+    course_list = []
+    for c, avg_rating, ratings_count in results:
+        course_list.append(
+            CourseResponse(
+                id_course=c.id_course,
+                name_course=c.name_course,
+                description_course=c.description_course,
+                image=c.image,
+                id_user=c.id_user,
+                is_forked=c.is_forked,
+                id_author_user=c.id_author_user,
+                id_theme=c.id_theme,
+                status_course=c.status_course,
+                is_my_favorite=c.id_course in my_favorite_ids,
+                date_created=c.date_created,
+                date_updated=c.date_updated,
+                avg_rating=float(avg_rating),
+                ratings_count=ratings_count,
+                author=AuthorResponse.model_validate(c.author) if c.author else None,
+                user=AuthorResponse.model_validate(c.user) if c.user else None,
+            )
         )
-        for c, avg_rating, ratings_count in results
-    ]
 
     return course_list

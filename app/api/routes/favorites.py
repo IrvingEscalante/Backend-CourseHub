@@ -9,7 +9,7 @@ from app.models.followers import Followers
 from app.schemas.user_schema import UserPublicOut, UserPrivateOut, UserFollow, UserOut
 from app.schemas.course_schema import AuthorResponse
 from app.schemas.messageOut import MessageOut
-from typing import List
+from typing import List, Optional
 from app.schemas.course_schema import CourseResponse
 from app.schemas.verify_email import EmailIn
 import secrets
@@ -22,19 +22,54 @@ from app.services.email_services import send_recover_password
 router = APIRouter()
 
 @router.get("/{username}", response_model=List[CourseResponse])
-def favorites_user(username:str, db: Session = Depends(get_db)):
+def favorites_user(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
     user = db.query(User).filter(User.username == username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="No se encontro al usuario")
+        raise HTTPException(status_code=404, detail="No se encontró el usuario")
 
-    favorites = db.query(Favorites).filter(Favorites.id_user == user.id).all()
+    # Obtener favoritos del usuario consultado
+    favorites = (
+        db.query(Favorites)
+        .filter(Favorites.id_user == user.id)
+        .all()
+    )
+
     courses = []
+
     for fav in favorites:
-        course = db.query(Course).filter(Course.id_course == fav.id_course).first()
-        if course:
-            courses.append(CourseResponse.model_validate(course))
+        course = (
+            db.query(Course)
+            .filter(Course.id_course == fav.id_course)
+            .first()
+        )
+        if not course:
+            continue
+
+        # Convertir el curso al schema
+        course_schema = CourseResponse.model_validate(course)
+
+        # Calcular si ES favorito para el usuario que está logueado
+        if current_user:
+            exists = (
+                db.query(Favorites)
+                .filter(
+                    Favorites.id_user == current_user.id,
+                    Favorites.id_course == course.id_course
+                )
+                .first()
+            )
+            course_schema.is_my_favorite = exists is not None
+        else:
+            course_schema.is_my_favorite = False
+
+        courses.append(course_schema)
 
     return courses
+
 
 @router.post("/add_delete/{id_course}", response_model=MessageOut)
 def add_delete_favorites(id_course:int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

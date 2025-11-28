@@ -14,6 +14,7 @@ from app.schemas.verify_email import EmailIn
 import secrets
 from app.models.recover_password import RecoverPassword
 from app.schemas.recover_password import PasswordChange
+from app.services.user_services import get_courses_created, get_favorite_courses, get_follow_data, get_user_by_username, get_favorite_ids
 from datetime import datetime, timedelta
 from app.services.email_services import send_recover_password
 
@@ -28,88 +29,37 @@ def profile(current_user: User = Depends(get_current_user),db: Session = Depends
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if user_data:
         return user_data
-
-
+    
+    
 @router.get("/user/{username}", response_model=Union[UserPrivateOut, UserPublicOut])
 def get_user(
     username: str,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    # Obtener usuario por username
-    user = db.query(User).filter(User.username == username).first()
+
+    user = get_user_by_username(db, username)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # ----------------------------
-    # 1. Cursos creados por el usuario
-    # ----------------------------
-    user_courses = db.query(Course).filter(Course.id_user == user.id).all()
+    follow_data = get_follow_data(db, user, current_user)
+    favorite_ids = set(get_favorite_ids(db, current_user))
 
-    courses_created = [
-        {
-            "id_course": c.id_course,
-            "name_course": c.name_course,
-            "description_course": c.description_course,
-            "image": c.image,
-            "id_user": c.id_user,
-            "is_forked": c.is_forked,
-            "id_author_user": c.id_author_user,
-            "status_course": c.status_course,
-            "date_created": c.date_created,
-            "date_updated": c.date_updated,
-            "author": AuthorResponse.model_validate(c.author) if c.author else None,
-            "user": AuthorResponse.model_validate(c.user) if c.user else None
-        }
-        for c in user_courses
-    ]
+    courses_created = get_courses_created(db, user, favorite_ids) 
+    favorites = get_favorite_courses(db, user, current_user, favorite_ids)
 
-    # ----------------------------
-    # 2. Followers y following
-    # ----------------------------
-    followers_ids = [
-        f.id_user 
-        for f in db.query(Followers).filter(Followers.id_user_follow == user.id).all()
-    ]
 
-    following_ids = [
-        f.id_user_follow
-        for f in db.query(Followers).filter(Followers.id_user == user.id).all()
-    ]
 
-    is_following = False
-    is_mutual = False
-
-    if current_user:
-        # current_user sigue al usuario visitado
-        is_following = db.query(Followers).filter(
-            Followers.id_user == current_user.id,
-            Followers.id_user_follow == user.id
-        ).first() is not None
-
-        # Relación mutua (solo si current_user sigue y también es seguido)
-        is_mutual = is_following and (current_user.id in following_ids)
-
-    # ----------------------------
-    # 3. Construir respuesta
-    # ----------------------------
     user_dict = user.__dict__.copy()
-    user_dict["followers_count"] = len(followers_ids)
-    user_dict["following_count"] = len(following_ids)
-    user_dict["following"] = is_following
-    user_dict["mutual"] = is_mutual
+    user_dict.update(follow_data)
     user_dict["courses_create"] = courses_created
+    user_dict["courses_favorites"] = favorites
 
-    # Eliminado: no hay favoritos aquí
-    # user_dict["courses_favorites"] = ...
-
-    # ----------------------------
-    # 4. Retornar vista privada o pública
-    # ----------------------------
     if current_user and current_user.id == user.id:
         return UserPrivateOut(**user_dict)
 
     return UserPublicOut(**user_dict)
+
 
 
 @router.post("/user/follow_unfollow/{username}", response_model=UserFollow)

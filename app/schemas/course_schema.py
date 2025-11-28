@@ -33,17 +33,21 @@ class CourseResponse(BaseModel):
     id_course: int
     name_course: str
     description_course: str
-    image: str
-    is_forked:bool
-    is_my_course:bool = False
-    is_favorite: bool = False
-    is_my_favorite:bool = False
+    image: Optional[str]
+    id_user: int
+    is_forked: bool
+    id_author_user: Optional[int]
+    id_theme: Optional[int]
     status_course: bool
+    is_my_favorite: bool = False
+    is_my_course:bool =False
+    is_favorite: bool = False
     date_created: datetime
-    avg_rating: float = 0
-    ratings_count: int = 0
-    date_updated: Optional[datetime] = None
-    author: Optional[AuthorResponse] = None 
+    date_updated: Optional[datetime]
+
+    avg_rating: Optional[float] = None
+    ratings_count: Optional[int] = None
+    author: Optional[AuthorResponse] = None
     user: Optional[AuthorResponse] = None
 
     class Config:
