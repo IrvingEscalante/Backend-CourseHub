@@ -20,6 +20,11 @@ from app.core.config import settings
 import cloudinary.uploader
 from cloudinary.utils import cloudinary_url
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload
+import asyncio
+from PIL import Image
+import io
+import os
+
 router = APIRouter()
 
 cloudinary.config(
@@ -29,52 +34,79 @@ cloudinary.config(
     secure=True
 )
 
+
+# ------------------------
+# 🟣 Función: comprimir imagen localmente si es grande
+# ------------------------
+async def compress_image(upload_file: UploadFile, max_size=1400):
+    try:
+        img = Image.open(upload_file.file)
+        img.thumbnail((max_size, max_size))
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+
+        return buffer
+    except:
+        upload_file.file.seek(0)
+        return upload_file.file  # fallback, subir original
+
+
+# ------------------------
+# 🟩 Función: subir imagen a Cloudinary (portada o recurso)
+# ------------------------
+async def upload_to_cloudinary(file_obj, preset: str):
+    return cloudinary.uploader.upload(
+        file_obj,
+        upload_preset=preset
+    )["secure_url"]
+
+
+# ------------------------
+# 🟦 Función: guardar archivo local (PDF/PPTX/DOCX/etc)
+# ------------------------
+async def save_file_local(file: UploadFile, file_name: str):
+    save_path = f"static/courses/resources/{file_name}"
+
+    with open(save_path, "wb") as buffer:
+        buffer.write(await file.read())
+
+    return f"/static/courses/resources/{file_name}"
+
+
+# ---------------------------------------------------
+# 🚀 ENDPOINT OPTIMIZADO
+# ---------------------------------------------------
 @router.post("/create")
 async def create_course(
     request: Request,
     cover: UploadFile = File(None),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    if cover is None:
-        print("no hay nada en cover")
-    
-    print(cover)
-
 
     form = await request.form()
-    
-    # ------------------ Obtener payload ------------------
+
     if "payload" not in form:
         raise HTTPException(400, "Falta el payload")
 
     data: CoursePayload = CoursePayload.model_validate(json.loads(form["payload"]))
 
-    # ------------------ Detectar archivos ------------------
-    # Files: UploadFile
-    files_dict = {}
+    # Obtener archivos enviados
+    files_dict = {k: v for k, v in form.items() if hasattr(v, "filename") and v.filename}
 
-    for key in form:
-        val = form.get(key)
-
-        # Cuando es archivo, val.__class__ tiene attribute "filename"
-        if hasattr(val, "filename") and val.filename:
-            files_dict[key] = val
-
-
-    # ------------------ Subir portada ------------------
+    # -----------------------------
+    # 1️⃣ Subir portada (optimizado)
+    # -----------------------------
     cover_url = None
     if cover:
-        upload_result = cloudinary.uploader.upload(
-            file=cover.file,
-            folder="courses/covers",
-            resource_type="image",
-            public_id=cover.filename
-        )
-        cover_url = upload_result.get("secure_url")
-    else:
-        print("no hay cover")
+        compressed = await compress_image(cover)
+        cover_url = await upload_to_cloudinary(compressed, "coursehub_presets")
 
+    # -----------------------------
+    # 2️⃣ Crear curso
+    # -----------------------------
     new_course = Course(
         name_course=data.title,
         description_course=data.description or "",
@@ -88,7 +120,11 @@ async def create_course(
     db.add(new_course)
     db.flush()
 
-    # ------------ 2. Crear módulos ----------------
+    # ------------------------------------------------------
+    # 3️⃣ Crear módulos, publicaciones y recursos (PARALELO)
+    # ------------------------------------------------------
+    upload_tasks = []  # se llenará con tareas async
+
     for index_m, module in enumerate(data.modules):
 
         new_module = ModuleCourse(
@@ -101,7 +137,6 @@ async def create_course(
         db.add(new_module)
         db.flush()
 
-        # ------------- 3. Crear publicaciones ---------------
         for publication in module.publications:
 
             pub = CoursePublish(
@@ -113,68 +148,57 @@ async def create_course(
             db.add(pub)
             db.flush()
 
-            # ----------- 4. Crear contenido -------------------
             for res in publication.resources:
 
-                content_value = None
+                file_key = res.fileKey
+                upload_type = res.type
 
-                # 1. Si es archivo subido
-                if res.type in ["image", "archive", "video", "raw"]:
+                async def process_resource(res=res, pub=pub):
+                    # Es archivo subido
+                    if upload_type in ["image", "archive", "video", "raw"]:
+                        if file_key not in files_dict:
+                            raise HTTPException(400, f"Falta archivo: {file_key}")
 
-                    file_key = res.fileKey
+                        file = files_dict[file_key]
 
-                    if file_key not in files_dict:
-                        raise HTTPException(400, f"Falta el archivo enviado: {file_key}")
+                        # IMAGEN → Cloudinary (optimizado)
+                        if upload_type == "image":
+                            comp = await compress_image(file)
+                            url = await upload_to_cloudinary(comp, "coursehub_resources_presets")
+                            type_content = "image"
 
-                    file = files_dict[file_key]
+                        else:
+                            # PDF/PPTX/DOCX → local
+                            ext = file.filename.split(".")[-1].lower()
+                            file_name = f"{pub.id_course_publish}_{file_key}.{ext}"
+                            url = await save_file_local(file, file_name)
+                            type_content = ext
 
-                    # === IMAGES → Cloudinary ===
-                    if res.type == "image":
-                        upload_result = cloudinary.uploader.upload(
-                            file.file,
-                            folder="courses/resources",
-                            resource_type="image",
-                        )
-                        content_value = upload_result["secure_url"]
-                        type_content = "image"
-
-                    # === PDF / PPTX / DOCX / RAW → Guardado local ===
                     else:
-                        ext = file.filename.split(".")[-1].lower()
-                        filename = f"{pub.id_course_publish}_{file_key}.{ext}"
+                        # Texto o embed
+                        url = res.value
+                        type_content = "text"
+                        
+                        if upload_type == "video-embed":
+                            url = res.value
+                            type_content = "video-embed"
 
-                        save_path = f"static/courses/resources/{filename}"
+                    # Insertar contenido
+                    db.add(ContentCoursePublish(
+                        id_course_publish=pub.id_course_publish,
+                        content=url,
+                        status=True,
+                        type_content=type_content
+                    ))
 
-                        # Guardar archivo en el servidor
-                        with open(save_path, "wb") as buffer:
-                            buffer.write(await file.read())
+                upload_tasks.append(process_resource())
 
-                        # URL pública del archivo
-                        content_value = f"/static/courses/resources/{filename}"
-                        type_content = ext
-
-                else:
-                    # contenido no archivo (texto, embeds, etc.)
-                    content_value = res.value
-                    type_content = "text"
-
-                content = ContentCoursePublish(
-                    id_course_publish=pub.id_course_publish,
-                    content=content_value,
-                    status=True,
-                    type_content=type_content
-                )
-                
-                db.add(content)
-
-
+    # Esperar todas las subidas en paralelo
+    await asyncio.gather(*upload_tasks)
 
     db.commit()
 
-    return {
-        "message": "Curso creado exitosamente",
-        "course_id": new_course.id_course
-    }
+    return {"message": "Curso creado exitosamente", "course_id": new_course.id_course}
 
 @router.get("/courses", response_model=List[CourseResponse])
 def get_courses_feed(

@@ -18,6 +18,7 @@ class AuthorResponse(BaseModel):
 
 
 class CourseBase(BaseModel):
+    id_course:int
     name_course: str
     description_course: str
     image: str
@@ -110,3 +111,53 @@ class CoursePayload(BaseModel):
     topic: Optional[int]
     description: Optional[str]
     modules: List[ModulePayload]
+
+class ResourceResponse(BaseModel):
+    id_content_course_publish: int
+    id_course_publish: int
+    content: str
+    status: bool
+    type_content: str
+
+    class Config:
+        from_attributes = True
+
+class PublicationResponse(BaseModel):
+    id_course_publish: int
+    id_module: int
+    name_publication: str
+    description: Optional[str] = None
+    date_created: Optional[datetime] = None
+    date_updated: Optional[datetime] = None
+    status_publish: bool
+    content: List[ResourceResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class ModuleResponse(BaseModel):
+    id_module: int
+    id_course: int
+    name_module: str
+    description_module: Optional[str] = None
+    status_module: bool
+    order_index: int
+    date_created: Optional[datetime] = None
+    course_publish: List[PublicationResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CourseFullResponse(BaseModel):
+    id_course:int
+    name_course: str
+    description_course: str
+    image: str
+    is_forked: bool
+    id_theme: int
+    status_course: Optional[bool] = True
+    modules: List[ModuleResponse]
+
+    class Config:
+        from_attributes = True

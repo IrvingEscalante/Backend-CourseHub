@@ -8,7 +8,7 @@ from typing import List
 from app.models.module_course import ModuleCourse
 from app.utils.security import get_current_user
 from app.schemas.module_course_schema import ModuleCourseResponse
-from app.schemas.course_schema import CourseResponse
+from app.schemas.course_schema import CourseResponse, CourseFullResponse
 from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.course_publish import CoursePublish
 from app.models.favorites_course import Favorites
@@ -100,3 +100,9 @@ def get_publish(id_module:int,db:Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No se tiene publicaciones este modulo")
     return publish_course
 
+@router.get("/course/raw/{id}", response_model=CourseFullResponse)
+async def get_course_raw(id: int, db: Session = Depends(get_db)):
+    course = db.query(Course).filter(Course.id_course == id).first()
+    if not course:
+        raise HTTPException(404, "Course not found")
+    return course
