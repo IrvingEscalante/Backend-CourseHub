@@ -11,6 +11,13 @@ class UserOut(BaseModel):
     photo:str | None = None
     biography: str | None = None
     
+class UserOutFollow(BaseModel):
+    username:str
+    name: str
+    lastname:str
+    photo:str | None = None
+    is_following:bool
+    
 
 class UserCreate(BaseModel):
     username: str
