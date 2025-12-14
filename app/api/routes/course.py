@@ -85,127 +85,159 @@ async def create_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-
     form = await request.form()
 
     if "payload" not in form:
         raise HTTPException(400, "Falta el payload")
 
-    data: CoursePayload = CoursePayload.model_validate(json.loads(form["payload"]))
+    payload: CoursePayload = CoursePayload.model_validate(
+        json.loads(form["payload"])
+    )
 
-    # Obtener archivos enviados
-    files_dict = {k: v for k, v in form.items() if hasattr(v, "filename") and v.filename}
+    files_dict = {
+        k: v for k, v in form.items()
+        if hasattr(v, "filename") and v.filename
+    }
 
-    # -----------------------------
-    # 1️⃣ Subir portada (optimizado)
-    # -----------------------------
+    # --------------------------------------------------
+    # 1. Cover
+    # --------------------------------------------------
     cover_url = None
     if cover:
         compressed = await compress_image(cover)
-        cover_url = await upload_to_cloudinary(compressed, "coursehub_presets")
+        cover_url = await upload_to_cloudinary(
+            compressed,
+            "coursehub_presets"
+        )
 
-    # -----------------------------
-    # 2️⃣ Crear curso
-    # -----------------------------
-    new_course = Course(
-        name_course=data.title,
-        description_course=data.description or "",
+    # --------------------------------------------------
+    # 2. Course
+    # --------------------------------------------------
+    course = Course(
+        name_course=payload.title,
+        description_course=payload.description or "",
         image=cover_url,
         id_user=current_user.id,
         id_author_user=current_user.id,
-        id_theme=data.topic,
+        id_theme=payload.topic,
         is_forked=False,
         status_course=True
     )
-    db.add(new_course)
+    db.add(course)
     db.flush()
 
-    # ------------------------------------------------------
-    # 3️⃣ Crear módulos, publicaciones y recursos (PARALELO)
-    # ------------------------------------------------------
-    upload_tasks = []  # se llenará con tareas async
+    upload_tasks = []
 
-    for index_m, module in enumerate(data.modules):
+    # --------------------------------------------------
+    # 3. Modules / Publications / Resources
+    # --------------------------------------------------
+    for mi, module in enumerate(payload.modules):
 
-        new_module = ModuleCourse(
-            id_course=new_course.id_course,
+        db_module = ModuleCourse(
+            id_course=course.id_course,
             name_module=module.title,
             description_module=module.description,
             status_module=True,
-            order_index=index_m
+            order_index=mi
         )
-        db.add(new_module)
+        db.add(db_module)
         db.flush()
 
         for publication in module.publications:
 
-            pub = CoursePublish(
-                id_module=new_module.id_module,
+            db_pub = CoursePublish(
+                id_module=db_module.id_module,
                 name_publication=publication.title,
                 description=publication.description,
                 status_publish=True
             )
-            db.add(pub)
+            db.add(db_pub)
             db.flush()
 
             for res in publication.resources:
 
-                file_key = res.fileKey
-                upload_type = res.type
+                async def process_resource(
+                    *,
+                    resource,
+                    pub_id,
+                    files
+                ):
+                    upload_type = resource.type
 
-                async def process_resource(res=res, pub=pub):
-                    # Es archivo subido
-                    if upload_type in ["image", "archive", "video", "raw"]:
-                        if file_key not in files_dict:
-                            raise HTTPException(400, f"Falta archivo: {file_key}")
+                    # ---------------- IMAGE / FILE ----------------
+                    if upload_type in ("image", "archive"):
+                        file_key = resource.fileKey
 
-                        file = files_dict[file_key]
+                        if file_key not in files:
+                            raise HTTPException(
+                                400,
+                                f"Falta archivo: {file_key}"
+                            )
 
-                        # IMAGEN → Cloudinary (optimizado)
+                        file = files[file_key]
+                        file.file.seek(0)
+
                         if upload_type == "image":
                             comp = await compress_image(file)
-                            url = await upload_to_cloudinary(comp, "coursehub_resources_presets")
+                            url = await upload_to_cloudinary(
+                                comp,
+                                "coursehub_resources_presets"
+                            )
                             type_content = "image"
-
                         else:
-                            # PDF/PPTX/DOCX → local
                             ext = file.filename.split(".")[-1].lower()
-                            file_name = f"{pub.id_course_publish}_{file_key}.{ext}"
-                            url = await save_file_local(file, file_name)
+                            name = f"{pub_id}_{file_key}.{ext}"
+                            url = await save_file_local(file, name)
                             type_content = ext
 
+                    # ---------------- TEXT / EMBED ----------------
                     else:
-                        # Texto o embed
-                        url = res.value
-                        type_content = "text"
-                        
-                        if upload_type == "video-embed":
-                            url = res.value
-                            type_content = "video-embed"
+                        url = resource.value
+                        type_content = (
+                            "video-embed"
+                            if upload_type == "video-embed"
+                            else "text"
+                        )
 
-                    # Insertar contenido
-                    db.add(ContentCoursePublish(
-                        id_course_publish=pub.id_course_publish,
-                        content=url,
-                        status=True,
-                        type_content=type_content
-                    ))
+                    return {
+                        "id_course_publish": pub_id,
+                        "content": url,
+                        "status": True,
+                        "type_content": type_content
+                    }
 
-                upload_tasks.append(process_resource())
+                upload_tasks.append(
+                    process_resource(
+                        resource=res,
+                        pub_id=db_pub.id_course_publish,
+                        files=files_dict
+                    )
+                )
 
-    # Esperar todas las subidas en paralelo
-    await asyncio.gather(*upload_tasks)
+    # --------------------------------------------------
+    # 4. Execute uploads (parallel)
+    # --------------------------------------------------
+    results = await asyncio.gather(*upload_tasks)
+
+    # --------------------------------------------------
+    # 5. DB inserts (SAFE)
+    # --------------------------------------------------
+    for r in results:
+        db.add(ContentCoursePublish(**r))
 
     db.commit()
 
-    return {"message": "Curso creado exitosamente", "course_id": new_course.id_course}
+    return {
+        "message": "Curso creado exitosamente",
+        "course_id": course.id_course
+    }
 
 @router.get("/courses", response_model=List[CourseResponse])
 def get_courses_feed(
     type_query: str = Query("all", enum=["all", "new", "popular", "trending"]),
     search: Optional[str] = Query(None, min_length=1),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1),
+    limit: int = Query(30, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
