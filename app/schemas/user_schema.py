@@ -11,6 +11,9 @@ class UserOut(BaseModel):
     photo:str | None = None
     biography: str | None = None
     
+class UserEdit(UserOut):
+    pass
+
 class UserOutFollow(BaseModel):
     username:str
     name: str

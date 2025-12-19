@@ -14,11 +14,8 @@ from app.models.course_publish import CoursePublish
 from app.models.content_course_publish import ContentCoursePublish
 from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
-import cloudinary
 from app.services.user_services import get_favorite_ids
-from app.core.config import settings
-import cloudinary.uploader
-from cloudinary.utils import cloudinary_url
+from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload
 import asyncio
 from PIL import Image
@@ -26,54 +23,6 @@ import io
 import os
 
 router = APIRouter()
-
-cloudinary.config(
-    cloud_name=settings.CLOUD_NAME,
-    api_key=settings.API_KEY_CLOUDINARY,
-    api_secret=settings.API_SECRET_CLOUDINARY,
-    secure=True
-)
-
-
-# ------------------------
-# 🟣 Función: comprimir imagen localmente si es grande
-# ------------------------
-async def compress_image(upload_file: UploadFile, max_size=1400):
-    try:
-        img = Image.open(upload_file.file)
-        img.thumbnail((max_size, max_size))
-
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
-        buffer.seek(0)
-
-        return buffer
-    except:
-        upload_file.file.seek(0)
-        return upload_file.file  # fallback, subir original
-
-
-# ------------------------
-# 🟩 Función: subir imagen a Cloudinary (portada o recurso)
-# ------------------------
-async def upload_to_cloudinary(file_obj, preset: str):
-    return cloudinary.uploader.upload(
-        file_obj,
-        upload_preset=preset
-    )["secure_url"]
-
-
-# ------------------------
-# 🟦 Función: guardar archivo local (PDF/PPTX/DOCX/etc)
-# ------------------------
-async def save_file_local(file: UploadFile, file_name: str):
-    save_path = f"static/courses/resources/{file_name}"
-
-    with open(save_path, "wb") as buffer:
-        buffer.write(await file.read())
-
-    return f"/static/courses/resources/{file_name}"
-
 
 # ---------------------------------------------------
 # 🚀 ENDPOINT OPTIMIZADO

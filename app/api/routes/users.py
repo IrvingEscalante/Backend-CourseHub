@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from app.utils.security import get_current_user, hash_password
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -6,9 +6,10 @@ from app.models.user import User
 from app.models.course import Course
 from app.models.favorites_course import Favorites
 from app.models.followers import Followers
-from app.schemas.user_schema import UserPublicOut, UserPrivateOut, UserFollow, UserOut
+from app.schemas.user_schema import UserPublicOut, UserPrivateOut, UserFollow, UserOut, UserEdit
 from app.schemas.course_schema import AuthorResponse
 from app.schemas.messageOut import MessageOut
+from app.utils.security import verify_password
 from typing import Optional, Union
 from app.schemas.verify_email import EmailIn
 import secrets
@@ -17,6 +18,9 @@ from app.schemas.recover_password import PasswordChange
 from app.services.user_services import get_courses_created, get_favorite_courses, get_follow_data, get_user_by_username, get_favorite_ids
 from datetime import datetime, timedelta
 from app.services.email_services import send_recover_password
+from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
+import asyncio
+from PIL import Image
 
 router = APIRouter()
 
@@ -98,7 +102,7 @@ def follow_unfollow_user(username:str, db: Session = Depends(get_db), current_us
 
 @router.post("/recover-password", response_model=MessageOut)
 async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email.email).first();
+    user = db.query(User).filter(User.email == email.email).first()
     print(email.email)
     if not user:
         raise HTTPException(status_code=404, detail="El usuario no esta registrado")
@@ -135,3 +139,100 @@ async def change_password(data: PasswordChange, db: Session = Depends(get_db)):
     db.commit()
 
     return {"success": True, "message": "Contraseña cambiada correctamente"}
+
+
+@router.patch("/edit-profile", response_model=UserOut)
+async def edit_profile(
+    name: str | None = Form(None),
+    lastname: str | None = Form(None),
+    email: str | None = Form(None),
+    username: str | None = Form(None),
+    biography: str | None = Form(None),
+    currentPassword: str | None = Form(None),
+    newPassword: str | None = Form(None),
+    avatar: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="El usuario no existe")
+
+    # ---------------------------------
+    # 1. Actualizar SOLO lo que venga
+    # ---------------------------------
+    if name is not None and name != user.name:
+        user.name = name
+
+    if lastname is not None and lastname != user.lastname:
+        user.lastname = lastname
+
+    if email is not None and email != user.email:
+        email_exists = (db.query(User).filter(User.email == email,User.id != user.id).first())
+        if email_exists:
+            raise HTTPException(
+                status_code=400,
+                detail="El email ya está en uso"
+            )
+        user.email = email
+
+    if username is not None and username != user.username:
+        username_exists = (
+            db.query(User)
+            .filter(
+                User.username == username,
+                User.id != user.id
+            )
+            .first()
+        )
+
+        if username_exists:
+            raise HTTPException(
+                status_code=400,
+                detail="El nombre de usuario ya está en uso"
+            )
+
+        user.username = username
+
+
+    if biography is not None and biography != user.biography:
+        user.biography = biography
+
+    if newPassword:
+        if not currentPassword:
+            raise HTTPException(
+                status_code=400,
+                detail="Debes proporcionar la contraseña actual"
+            )
+
+        if not verify_password(currentPassword, user.hashed_password):
+            raise HTTPException(
+                status_code=400,
+                detail="La contraseña actual es incorrecta"
+            )
+
+        user.hashed_password = hash_password(newPassword)
+
+    # ---------------------------------
+    # 3. Avatar (Cloudinary)
+    # ---------------------------------
+    if avatar:
+        file_bytes = await avatar.read()
+
+        avatar_url = await upload_to_cloudinary(
+            file_bytes,
+            "profile_images_presets"
+        )
+
+        user.photo = avatar_url
+
+
+
+    # ---------------------------------
+    # 4. Guardar cambios
+    # ---------------------------------
+    db.commit()
+    db.refresh(user)
+
+    return user
