@@ -3,7 +3,7 @@ from sqlalchemy import or_
 from app.utils.security import get_current_user
 from sqlalchemy import func
 import json
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models.user import User
 from app.models.course import Course
@@ -28,12 +28,7 @@ router = APIRouter()
 # 🚀 ENDPOINT OPTIMIZADO
 # ---------------------------------------------------
 @router.post("/create")
-async def create_course(
-    request: Request,
-    cover: UploadFile = File(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+async def create_course(request: Request,cover: UploadFile = File(None),db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
     form = await request.form()
 
     if "payload" not in form:
@@ -267,3 +262,86 @@ def get_courses_feed(
         )
 
     return course_list
+
+
+@router.post("/copy/{id_course}")
+def copy_course(
+    id_course: int,
+    db: Session = Depends(get_db),
+    current_user:User=Depends(get_current_user)
+):
+    original_course = (
+        db.query(Course)
+        .options(
+            joinedload(Course.modules)
+            .joinedload(ModuleCourse.course_publish)
+            .joinedload(CoursePublish.content)
+        )
+        .filter(Course.id_course == id_course, Course.status_course == True)
+        .first()
+    )
+
+    if not original_course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+
+    try:
+        # 2️⃣ Crear nuevo curso (fork)
+        new_course = Course(
+            id_course_parent=original_course.id_course,
+            name_course=original_course.name_course,
+            description_course=original_course.description_course,
+            image=original_course.image,
+            id_user=current_user.id,  # dueño del fork
+            id_author_user=original_course.id_author_user,  # autor original
+            id_theme=original_course.id_theme,
+            is_forked=True,
+            status_course=True,
+        )
+        db.add(new_course)
+        db.flush() 
+
+        for module in original_course.modules:
+            new_module = ModuleCourse(
+                id_course=new_course.id_course,
+                name_module=module.name_module,
+                description_module=module.description_module,
+                status_module=module.status_module,
+                order_index=module.order_index
+            )
+            db.add(new_module)
+            db.flush()
+
+            # 4️⃣ Clonar publicaciones
+            for publish in module.course_publish:
+                new_publish = CoursePublish(
+                    id_module=new_module.id_module,
+                    name_publication=publish.name_publication,
+                    description=publish.description,
+                    status_publish=publish.status_publish,
+                )
+                db.add(new_publish)
+                db.flush()
+
+                # 5️⃣ Clonar contenido
+                for content in publish.content:
+                    new_content = ContentCoursePublish(
+                        id_course_publish=new_publish.id_course_publish,
+                        content=content.content,
+                        status=content.status,
+                        type_content=content.type_content
+                    )
+                    db.add(new_content)
+
+        db.commit()
+
+        return {
+            "message": "Curso forked correctamente",
+            "id_course_new": new_course.id_course
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al hacer fork del curso: {str(e)}"
+        )

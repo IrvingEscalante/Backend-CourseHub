@@ -8,6 +8,7 @@ class Course(Base):
     __tablename__='course'
 
     id_course = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    id_course_parent = Column(Integer, ForeignKey("course.id_course"), nullable=True)
     name_course = Column(String(50), nullable=False)
     description_course = Column(Text, nullable=False)
     image = Column(String(200), nullable=False)
@@ -28,6 +29,7 @@ class Course(Base):
     pull_requests_target = relationship("PullRequest", back_populates="course_target", foreign_keys='PullRequest.id_course_target')
     rating = relationship("RatingCommentsCourse", back_populates="course_rating")
     course = relationship("CourseVersion", back_populates = "course_version")
+    parent_course = relationship("Course",remote_side=[id_course],backref="forks")
 
 
 
