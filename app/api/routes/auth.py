@@ -155,3 +155,43 @@ async def resend_code(data:EmailIn, db: Session = Depends(get_db)):
 
 
 
+@router.post("/recover-password", response_model=MessageOut)
+async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == email.email).first()
+    print(email.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="El usuario no esta registrado")
+    token = secrets.token_hex(32)
+    new_token = RecoverPassword(id_user = user.id, token=token, date_expired= datetime.now() + timedelta(minutes=10))
+    db.add(new_token)
+    db.commit()
+    db.refresh(new_token)
+    link = f"{settings.FRONTEND_URL}/change-password-recover?token={token}"
+    await send_recover_password(email.email, link)
+    return {
+        "success": True,
+        "message": "Se ha enviado el correo electronico"}
+
+@router.post("/change-password")
+async def change_password(data: PasswordChange, db: Session = Depends(get_db)):
+    recover = db.query(RecoverPassword).filter(RecoverPassword.token == data.token).first()
+
+    if not recover:
+        raise HTTPException(status_code=404, detail="Token no válido")
+
+    if recover.used:
+        raise HTTPException(status_code=400, detail="Token ya fue usado")
+
+    if recover.date_expired < datetime.now():
+        raise HTTPException(status_code=400, detail="Token expirado")
+
+    user = db.query(User).filter(User.id == recover.id_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    user.hashed_password = hash_password(data.new_password)
+    recover.used = True  # marcar token como usado
+    db.commit()
+
+    return {"success": True, "message": "Contraseña cambiada correctamente"}
+

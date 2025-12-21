@@ -16,7 +16,7 @@ from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
 from app.services.user_services import get_favorite_ids
 from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
-from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload
+from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
 import asyncio
 from PIL import Image
 import io
@@ -181,7 +181,7 @@ def get_courses_feed(
     type_query: str = Query("all", enum=["all", "new", "popular", "trending"]),
     search: Optional[str] = Query(None, min_length=1),
     page: int = Query(1, ge=1),
-    limit: int = Query(30, ge=1),
+    limit: int = Query(50, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
@@ -264,7 +264,7 @@ def get_courses_feed(
     return course_list
 
 
-@router.post("/copy/{id_course}")
+@router.post("/copy/{id_course}", response_model=CourseBase)
 def copy_course(
     id_course: int,
     db: Session = Depends(get_db),
@@ -280,6 +280,9 @@ def copy_course(
         .filter(Course.id_course == id_course, Course.status_course == True)
         .first()
     )
+
+    if original_course.id_user == current_user.id:
+        raise HTTPException(status_code=403, detail="No puedes forkear el curso ya que tu eres el dueño")
 
     if not original_course:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
@@ -334,10 +337,7 @@ def copy_course(
 
         db.commit()
 
-        return {
-            "message": "Curso forked correctamente",
-            "id_course_new": new_course.id_course
-        }
+        return new_course
 
     except Exception as e:
         db.rollback()
