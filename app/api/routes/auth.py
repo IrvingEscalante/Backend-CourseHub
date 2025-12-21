@@ -15,6 +15,7 @@ from app.schemas.messageOut import MessageOut
 from app.schemas.verify_email import EmailIn
 from app.utils.security import decrypt_email, encrypt_email
 from app.schemas.user_schema import UserOut
+from app.schemas.recover_password import PasswordChange
 from app.core.config import settings
 
 

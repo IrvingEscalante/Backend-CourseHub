@@ -11,6 +11,7 @@ from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.user import User
 from app.models.version_course import CourseVersion
 from app.models.theme import Theme
+from app.models.pullRequestChange import PullRequestChange
 
 __all__ = [
     "Course", "ModuleCourse", "CoursePublish", "Favorites",

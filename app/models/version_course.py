@@ -9,11 +9,14 @@ class CourseVersion(Base):
     id_version = Column(Integer, primary_key=True, autoincrement=True, index=True)
     id_course = Column(Integer, ForeignKey("course.id_course"))
     version_number = Column(Integer, nullable=False)
-    content = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.now())
     created_by = Column(Integer)
-    restored_from = Column(Integer)
+    base_version = Column(Integer, nullable=True)
 
-    course_version = relationship("Course", back_populates="course")
+    course = relationship(
+        "Course",
+        back_populates="versions",
+        foreign_keys=[id_course]
+    )
 
 

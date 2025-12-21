@@ -11,6 +11,7 @@ from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.theme import Theme
 from app.models.module_course import ModuleCourse
 from app.models.course_publish import CoursePublish
+from app.models.version_course import CourseVersion
 from app.models.content_course_publish import ContentCoursePublish
 from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
@@ -168,8 +169,20 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     # --------------------------------------------------
     for r in results:
         db.add(ContentCoursePublish(**r))
+        # Crear versión inicial
+    version = CourseVersion(
+        id_course=course.id_course,
+        version_number=1,
+        created_by=current_user.id,
+        base_version=None
+    )
+    db.add(version)
+    db.flush()
+    # Vincular curso a su versión base
+    course.base_version = version.id_version
 
     db.commit()
+    
 
     return {
         "message": "Curso creado exitosamente",
@@ -288,6 +301,13 @@ def copy_course(
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
     try:
+        last_version = (
+            db.query(CourseVersion)
+            .filter(CourseVersion.id_course == original_course.id_course)
+            .order_by(CourseVersion.version_number.desc())
+            .first()
+        )
+
         # 2️⃣ Crear nuevo curso (fork)
         new_course = Course(
             id_course_parent=original_course.id_course,
@@ -334,6 +354,26 @@ def copy_course(
                         type_content=content.type_content
                     )
                     db.add(new_content)
+
+        base_version = (
+            db.query(CourseVersion)
+            .filter(CourseVersion.id_course == original_course.id_course)
+            .order_by(CourseVersion.version_number.desc())
+            .first()
+        )
+
+                # Crear versión inicial del fork
+        fork_version = CourseVersion(
+            id_course=new_course.id_course,
+            version_number=1,
+            created_by=current_user.id,
+            base_version=base_version.id_version
+        )
+        db.add(fork_version)
+        db.flush()
+
+        # Vincular el fork a su versión
+        new_course.base_version = fork_version.id_version
 
         db.commit()
 
