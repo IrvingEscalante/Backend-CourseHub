@@ -83,7 +83,8 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
             name_module=module.title,
             description_module=module.description,
             status_module=True,
-            order_index=mi
+            order_index=mi,
+            id_original_module=None
         )
         db.add(db_module)
         db.flush()
@@ -178,6 +179,8 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     )
     db.add(version)
     db.flush()
+    for module in course.modules:
+        module.id_version = version.id_version
     # Vincular curso a su versión base
     course.base_version = version.id_version
 
@@ -226,7 +229,7 @@ def get_courses_feed(
                 Course.description_course.ilike(search_like)
             )
         )
-
+    type_query = "new"
     # ----------------------------
     # 3. Tipos de ordenamiento
     # ----------------------------
@@ -301,12 +304,14 @@ def copy_course(
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
     try:
-        last_version = (
+ # Última versión del curso original
+        base_version = (
             db.query(CourseVersion)
             .filter(CourseVersion.id_course == original_course.id_course)
             .order_by(CourseVersion.version_number.desc())
             .first()
         )
+
 
         # 2️⃣ Crear nuevo curso (fork)
         new_course = Course(
@@ -323,13 +328,27 @@ def copy_course(
         db.add(new_course)
         db.flush() 
 
+                # 2️⃣ Crear versión inicial del fork
+        fork_version = CourseVersion(
+            id_course=new_course.id_course,
+            version_number=1,
+            created_by=current_user.id,
+            base_version=base_version.id_version if base_version else None
+        )
+        db.add(fork_version)
+        db.flush()
+
+        new_course.base_version = fork_version.id_version
+
         for module in original_course.modules:
             new_module = ModuleCourse(
                 id_course=new_course.id_course,
+                id_version=fork_version.id_version,
                 name_module=module.name_module,
                 description_module=module.description_module,
                 status_module=module.status_module,
-                order_index=module.order_index
+                order_index=module.order_index,
+                id_original_module=module.id_module
             )
             db.add(new_module)
             db.flush()
@@ -354,26 +373,6 @@ def copy_course(
                         type_content=content.type_content
                     )
                     db.add(new_content)
-
-        base_version = (
-            db.query(CourseVersion)
-            .filter(CourseVersion.id_course == original_course.id_course)
-            .order_by(CourseVersion.version_number.desc())
-            .first()
-        )
-
-                # Crear versión inicial del fork
-        fork_version = CourseVersion(
-            id_course=new_course.id_course,
-            version_number=1,
-            created_by=current_user.id,
-            base_version=base_version.id_version
-        )
-        db.add(fork_version)
-        db.flush()
-
-        # Vincular el fork a su versión
-        new_course.base_version = fork_version.id_version
 
         db.commit()
 

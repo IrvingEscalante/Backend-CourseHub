@@ -30,7 +30,7 @@ class PullRequest(Base):
     )
 
     # Estado
-    status_pull = Column(Boolean, nullable=False, default=True)  # abierto / cerrado
+    status_pull = Column(String(20), nullable=False, default="open")  # abierto / cerrado
     merge_status = Column(String(20), nullable=False, default="not merged")
     # not merged | merged | rejected
 
