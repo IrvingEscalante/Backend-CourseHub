@@ -20,13 +20,28 @@ from typing import List, Optional, Dict
 from app.services.user_services import get_favorite_ids
 from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
-from app.schemas.pull_request_schema import PullRequestCreate
+from app.schemas.pull_request_schema import PullRequestCreate, PullRequestBasicOut
 import asyncio
 from PIL import Image
 import io
 import os
 
 router = APIRouter()
+
+@router.get("/get_pull_request/{id_course}", response_model=List[PullRequestBasicOut])
+def get_pull_request(id_course:int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not current_user:
+        raise HTTPException(status_code=404, detail="No estas logueado para acceder a los pull requets")
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="No existe un curso con este id")
+    user_owner_course = db.query(User).filter(User.id == course.id_user).first()
+    if user_owner_course.id != current_user.id:
+        raise HTTPException(status_code=404, detail="No tienes permiso para ver estos pull request")
+    pull_request = db.query(PullRequest).filter(PullRequest.id_course_target == id_course)
+    if not pull_request:
+        raise HTTPException(status_code=404, detail="No hay pull requests")
+    return pull_request
 
 @router.post("/", status_code=201)
 def create_pull_request(

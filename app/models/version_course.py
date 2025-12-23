@@ -19,5 +19,7 @@ class CourseVersion(Base):
         foreign_keys=[id_course]
     )
     modules = relationship("ModuleCourse", back_populates="course_version")
+    publishes = relationship("CoursePublish", back_populates="course_version")
+    contents = relationship("ContentCoursePublish", back_populates="course_version")
 
 

@@ -61,6 +61,19 @@ class UserFollow(BaseModel):
     photo:str | None = None
     following:bool
 
+class AuthorResponse(BaseModel):
+    id: int
+    username: str
+    name: str
+    lastname: str
+    photo: Optional[str] = None 
+    biography: Optional[str] = None
+
+
+    class Config:
+        from_attributes = True  
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

@@ -25,9 +25,6 @@ import os
 
 router = APIRouter()
 
-# ---------------------------------------------------
-# 🚀 ENDPOINT OPTIMIZADO
-# ---------------------------------------------------
 @router.post("/create")
 async def create_course(request: Request,cover: UploadFile = File(None),db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
     form = await request.form()
@@ -44,9 +41,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
         if hasattr(v, "filename") and v.filename
     }
 
-    # --------------------------------------------------
-    # 1. Cover
-    # --------------------------------------------------
     cover_url = None
     if cover:
         compressed = await compress_image(cover)
@@ -55,9 +49,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
             "coursehub_presets"
         )
 
-    # --------------------------------------------------
-    # 2. Course
-    # --------------------------------------------------
     course = Course(
         name_course=payload.title,
         description_course=payload.description or "",
@@ -70,35 +61,44 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     )
     db.add(course)
     db.flush()
+    version = CourseVersion(
+        id_course=course.id_course,
+        version_number=1,
+        created_by=current_user.id,
+        base_version=None
+    )
+    db.add(version)
+    db.flush()
+    course.base_version = version.id_version
 
     upload_tasks = []
 
-    # --------------------------------------------------
-    # 3. Modules / Publications / Resources
-    # --------------------------------------------------
     for mi, module in enumerate(payload.modules):
 
         db_module = ModuleCourse(
             id_course=course.id_course,
+            id_version=version.id_version,
             name_module=module.title,
             description_module=module.description,
             status_module=True,
             order_index=mi,
-            id_original_module=None
         )
         db.add(db_module)
         db.flush()
+        db_module.id_original_module = db_module.id_module
 
         for publication in module.publications:
 
             db_pub = CoursePublish(
                 id_module=db_module.id_module,
+                id_version=version.id_version,
                 name_publication=publication.title,
                 description=publication.description,
                 status_publish=True
             )
             db.add(db_pub)
             db.flush()
+            db_pub.id_original_publish = db_pub.id_course_publish
 
             for res in publication.resources:
 
@@ -110,7 +110,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
                 ):
                     upload_type = resource.type
 
-                    # ---------------- IMAGE / FILE ----------------
                     if upload_type in ("image", "archive"):
                         file_key = resource.fileKey
 
@@ -136,7 +135,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
                             url = await save_file_local(file, name)
                             type_content = ext
 
-                    # ---------------- TEXT / EMBED ----------------
                     else:
                         url = resource.value
                         type_content = (
@@ -147,6 +145,7 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
 
                     return {
                         "id_course_publish": pub_id,
+                        "id_version": version.id_version,
                         "content": url,
                         "status": True,
                         "type_content": type_content
@@ -160,32 +159,16 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
                     )
                 )
 
-    # --------------------------------------------------
-    # 4. Execute uploads (parallel)
-    # --------------------------------------------------
     results = await asyncio.gather(*upload_tasks)
 
-    # --------------------------------------------------
-    # 5. DB inserts (SAFE)
-    # --------------------------------------------------
     for r in results:
-        db.add(ContentCoursePublish(**r))
-        # Crear versión inicial
-    version = CourseVersion(
-        id_course=course.id_course,
-        version_number=1,
-        created_by=current_user.id,
-        base_version=None
-    )
-    db.add(version)
-    db.flush()
-    for module in course.modules:
-        module.id_version = version.id_version
-    # Vincular curso a su versión base
-    course.base_version = version.id_version
+        content = ContentCoursePublish(**r)
+        db.add(content)
+        db.flush()
+
+        content.id_original_content = content.id_content_course_publish
 
     db.commit()
-    
 
     return {
         "message": "Curso creado exitosamente",
@@ -201,9 +184,6 @@ def get_courses_feed(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    # ----------------------------
-    # 1. Consulta base cursos + rating
-    # ----------------------------
     query = (
         db.query(
             Course,
@@ -296,6 +276,21 @@ def copy_course(
         .filter(Course.id_course == id_course, Course.status_course == True)
         .first()
     )
+    existing_fork = (
+        db.query(Course)
+        .filter(
+            Course.id_user == current_user.id,
+            Course.id_course_parent == original_course.id_course
+        )
+        .first()
+    )
+
+    if existing_fork:
+        raise HTTPException(
+            409,
+            "Ya tienes un fork de este curso"
+        )
+
 
     if original_course.id_user == current_user.id:
         raise HTTPException(status_code=403, detail="No puedes forkear el curso ya que tu eres el dueño")
@@ -311,6 +306,12 @@ def copy_course(
             .order_by(CourseVersion.version_number.desc())
             .first()
         )
+        if not base_version:
+            raise HTTPException(
+                status_code=400,
+                detail="El curso original no tiene versión base"
+            )
+
 
 
         # 2️⃣ Crear nuevo curso (fork)
@@ -357,9 +358,11 @@ def copy_course(
             for publish in module.course_publish:
                 new_publish = CoursePublish(
                     id_module=new_module.id_module,
+                    id_version=fork_version.id_version,
                     name_publication=publish.name_publication,
                     description=publish.description,
                     status_publish=publish.status_publish,
+                    id_original_publish=publish.id_course_publish
                 )
                 db.add(new_publish)
                 db.flush()
@@ -368,9 +371,11 @@ def copy_course(
                 for content in publish.content:
                     new_content = ContentCoursePublish(
                         id_course_publish=new_publish.id_course_publish,
+                        id_version=fork_version.id_version,
                         content=content.content,
                         status=content.status,
-                        type_content=content.type_content
+                        type_content=content.type_content,
+                        id_original_content=content.id_content_course_publish
                     )
                     db.add(new_content)
 
