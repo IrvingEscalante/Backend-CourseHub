@@ -389,3 +389,140 @@ def copy_course(
             status_code=500,
             detail=f"Error al hacer fork del curso: {str(e)}"
         )
+
+
+@router.post("/edit/{id_course}")
+async def edit_course(
+    id_course: int,
+    request: Request,
+    cover: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    course = db.query(Course).options(
+        joinedload(Course.modules)
+        .joinedload(ModuleCourse.course_publish)
+        .joinedload(CoursePublish.content)
+    ).filter(Course.id_course == id_course).first()
+
+    if not course:
+        raise HTTPException(404, "Curso no encontrado")
+
+    if course.id_user != current_user.id:
+        raise HTTPException(403, "No tienes permiso para editar este curso")
+
+    form = await request.form()
+    if "payload" not in form:
+        raise HTTPException(400, "Falta el payload")
+
+    payload = json.loads(form["payload"])
+
+    # Actualizar datos generales
+    course.name_course = payload["title"]
+    course.description_course = payload.get("description", "")
+    course.id_theme = payload["topic"]
+
+    if cover:
+        compressed = await compress_image(cover)
+        course.image = await upload_to_cloudinary(compressed, "coursehub_presets")
+
+    # Crear nueva versión del curso
+    latest_version = db.query(CourseVersion).filter(CourseVersion.id_course == course.id_course)\
+                    .order_by(CourseVersion.version_number.desc()).first()
+    new_version = CourseVersion(
+        id_course=course.id_course,
+        version_number=(latest_version.version_number + 1) if latest_version else 1,
+        created_by=current_user.id,
+        base_version=course.base_version
+    )
+    db.add(new_version)
+    db.flush()
+    course.base_version = new_version.id_version
+
+    files_dict = {k: v for k, v in form.items() if hasattr(v, "filename") and v.filename}
+
+    # Recorrer módulos
+    for mi, m in enumerate(payload["modules"]):
+        original_module = next((mod for mod in course.modules if mod.id_module == m.get("id_module")), None)
+
+        if not original_module or m["title"] != original_module.name_module or m.get("description","") != original_module.description_module:
+            db_module = ModuleCourse(
+                id_course=course.id_course,
+                id_version=new_version.id_version,
+                name_module=m["title"],
+                description_module=m.get("description",""),
+                status_module=True,
+                order_index=mi,
+                id_original_module=original_module.id_module if original_module else None
+            )
+            db.add(db_module)
+            db.flush()
+        else:
+            db_module = original_module
+
+        # Publicaciones
+        for pi, p in enumerate(m["publications"]):
+            original_pub = None
+            if original_module:
+                original_pub = next((pub for pub in original_module.course_publish if pub.id_course_publish == p.get("id_course_publish")), None)
+
+            if not original_pub or p["title"] != original_pub.name_publication or p.get("description","") != original_pub.description:
+                db_pub = CoursePublish(
+                    id_module=db_module.id_module,
+                    id_version=new_version.id_version,
+                    name_publication=p["title"],
+                    description=p.get("description",""),
+                    status_publish=True,
+                    id_original_publish=original_pub.id_course_publish if original_pub else None
+                )
+                db.add(db_pub)
+                db.flush()
+            else:
+                db_pub = original_pub
+
+            # Contenidos
+            upload_tasks = []
+            for ri, r in enumerate(p["resources"]):
+                async def process_resource(resource, pub_id):
+                    upload_type = resource["type"]
+                    if upload_type in ("image", "archive"):
+                        file_key = f"67_{resource['fileKey']}"
+                        if file_key not in files_dict:
+                            raise HTTPException(400, f"Falta archivo: {file_key}.pdf")
+                        file = files_dict[file_key]
+                        file.file.seek(0)
+
+                        if upload_type == "image":
+                            comp = await compress_image(file)
+                            url = await upload_to_cloudinary(comp, "coursehub_resources_presets")
+                            type_content = "image"
+                        else:
+                            ext = file.filename.split(".")[-1].lower()
+                            name = f"{pub_id}_{file_key}.{ext}"
+                            url = await save_file_local(file, name)
+                            type_content = ext
+                    else:
+                        url = resource.get("value")
+                        type_content = "video-embed" if upload_type == "video-embed" else "text"
+
+                    return {
+                        "id_course_publish": pub_id,
+                        "id_version": new_version.id_version,
+                        "content": url,
+                        "status": True,
+                        "type_content": type_content,
+                        "id_original_content": r.get("id_content")
+                    }
+
+                upload_tasks.append(process_resource(r, db_pub.id_course_publish))
+
+            results = await asyncio.gather(*upload_tasks)
+            for r in results:
+                content = ContentCoursePublish(**r)
+                db.add(content)
+                db.flush()
+                if not content.id_original_content:
+                    content.id_original_content = content.id_content_course_publish
+
+    db.commit()
+    return {"message": "Curso editado exitosamente", "course_id": course.id_course}
