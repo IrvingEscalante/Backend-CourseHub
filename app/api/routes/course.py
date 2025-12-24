@@ -25,6 +25,17 @@ import os
 
 router = APIRouter()
 
+def create_course_version(db: Session, course_id: int, created_by: int, base_version: Optional[int] = None) -> CourseVersion:
+    version = CourseVersion(
+        id_course=course_id,
+        version_number=1,  # This will be updated later
+        created_by=created_by,
+        base_version=base_version
+    )
+    db.add(version)
+    db.flush()
+    return version
+
 @router.post("/create")
 async def create_course(request: Request,cover: UploadFile = File(None),db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
     form = await request.form()
@@ -61,14 +72,7 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     )
     db.add(course)
     db.flush()
-    version = CourseVersion(
-        id_course=course.id_course,
-        version_number=1,
-        created_by=current_user.id,
-        base_version=None
-    )
-    db.add(version)
-    db.flush()
+    version = create_course_version(db, course.id_course, current_user.id)
     course.base_version = version.id_version
 
     upload_tasks = []
@@ -299,7 +303,6 @@ def copy_course(
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
     try:
- # Última versión del curso original
         base_version = (
             db.query(CourseVersion)
             .filter(CourseVersion.id_course == original_course.id_course)
@@ -312,33 +315,21 @@ def copy_course(
                 detail="El curso original no tiene versión base"
             )
 
-
-
-        # 2️⃣ Crear nuevo curso (fork)
         new_course = Course(
             id_course_parent=original_course.id_course,
             name_course=original_course.name_course,
             description_course=original_course.description_course,
             image=original_course.image,
-            id_user=current_user.id,  # dueño del fork
-            id_author_user=original_course.id_author_user,  # autor original
+            id_user=current_user.id,
+            id_author_user=original_course.id_author_user,
             id_theme=original_course.id_theme,
             is_forked=True,
             status_course=True,
         )
         db.add(new_course)
-        db.flush() 
-
-                # 2️⃣ Crear versión inicial del fork
-        fork_version = CourseVersion(
-            id_course=new_course.id_course,
-            version_number=1,
-            created_by=current_user.id,
-            base_version=base_version.id_version if base_version else None
-        )
-        db.add(fork_version)
         db.flush()
 
+        fork_version = create_course_version(db, new_course.id_course, current_user.id, base_version.id_version)
         new_course.base_version = fork_version.id_version
 
         for module in original_course.modules:
@@ -391,6 +382,31 @@ def copy_course(
         )
 
 
+def has_module_changes(course: Course, modules_payload: List[Dict]) -> bool:
+    if len(modules_payload) != len(course.modules):
+        return True
+    modules_map = {m.id_module: m for m in course.modules}
+    for idx, m in enumerate(modules_payload):
+        mod = modules_map.get(m.get("id_module"))
+        if not mod:
+            return True
+        if mod.order_index != idx or mod.name_module != m["title"] or mod.description_module != m.get("description", ""):
+            return True
+        pubs_payload = m.get("publications", [])
+        if len(pubs_payload) != len(mod.course_publish):
+            return True
+        pub_map = {p.id_course_publish: p for p in mod.course_publish}
+        for p in pubs_payload:
+            pub = pub_map.get(p.get("id_course_publish"))
+            if not pub:
+                return True
+            if pub.name_publication != p["title"] or pub.description != p.get("description", ""):
+                return True
+            if len(p.get("resources", [])) != len(pub.content):
+                return True
+    return False
+
+
 @router.post("/edit/{id_course}")
 async def edit_course(
     id_course: int,
@@ -416,6 +432,15 @@ async def edit_course(
         raise HTTPException(400, "Falta el payload")
 
     payload = json.loads(form["payload"])
+    modules_payload = payload.get("modules") if isinstance(payload, dict) else []
+
+    course_changed = (
+        course.name_course != payload["title"] or
+        course.description_course != payload.get("description", "") or
+        course.id_theme != payload["topic"] or
+        cover is not None
+    )
+    modules_changed = has_module_changes(course, modules_payload) if isinstance(modules_payload, list) else False
 
     # Actualizar datos generales
     course.name_course = payload["title"]
@@ -426,15 +451,15 @@ async def edit_course(
         compressed = await compress_image(cover)
         course.image = await upload_to_cloudinary(compressed, "coursehub_presets")
 
-    # Crear nueva versión del curso
+    if not modules_changed:
+        db.commit()
+        return {"message": "Curso editado exitosamente", "course_id": course.id_course}
+
+    # Crear nueva versión del curso solo si hay cambios en módulos/publicaciones/contenido
     latest_version = db.query(CourseVersion).filter(CourseVersion.id_course == course.id_course)\
                     .order_by(CourseVersion.version_number.desc()).first()
-    new_version = CourseVersion(
-        id_course=course.id_course,
-        version_number=(latest_version.version_number + 1) if latest_version else 1,
-        created_by=current_user.id,
-        base_version=course.base_version
-    )
+    new_version = create_course_version(db, course.id_course, current_user.id, course.base_version)
+    new_version.version_number = (latest_version.version_number + 1) if latest_version else 1
     db.add(new_version)
     db.flush()
     course.base_version = new_version.id_version
@@ -442,7 +467,7 @@ async def edit_course(
     files_dict = {k: v for k, v in form.items() if hasattr(v, "filename") and v.filename}
 
     # Recorrer módulos
-    for mi, m in enumerate(payload["modules"]):
+    for mi, m in enumerate(modules_payload):
         original_module = next((mod for mod in course.modules if mod.id_module == m.get("id_module")), None)
 
         if not original_module or m["title"] != original_module.name_module or m.get("description","") != original_module.description_module:
@@ -526,3 +551,48 @@ async def edit_course(
 
     db.commit()
     return {"message": "Curso editado exitosamente", "course_id": course.id_course}
+
+@router.patch("/update-basics/{id_course}", response_model=CourseBase)
+async def update_course_basics(
+    id_course: int,
+    name_course: str = Form(None),
+    description_course: str = Form(None),
+    cover: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    print(name_course)
+    print(description_course)
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    
+    if course.id_user != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para editar este curso")
+    
+    # Actualizar campos proporcionados (solo si no son None y no están vacíos)
+    if name_course is not None and name_course.strip():
+        course.name_course = name_course.strip()
+    if description_course is not None and description_course.strip():
+        course.description_course = description_course.strip()
+    
+    # Procesar imagen si se proporciona
+    if cover:
+        compressed = await compress_image(cover)
+        course.image = await upload_to_cloudinary(compressed, "coursehub_presets")
+    
+    db.commit()
+    db.refresh(course)
+    
+    return CourseBase(
+        id_course=course.id_course,
+        name_course=course.name_course,
+        description_course=course.description_course,
+        image=course.image,
+        id_user=course.id_user,
+        id_author_user=course.id_author_user,
+        id_theme=course.id_theme,
+        is_forked=course.is_forked,
+        status_course=course.status_course
+    )
