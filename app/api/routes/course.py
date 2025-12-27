@@ -262,6 +262,8 @@ def copy_course(
     db: Session = Depends(get_db),
     current_user:User=Depends(get_current_user)
 ):
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Inicia sesion primero para poder copiar un curso")
     original_course = (
         db.query(Course)
         .options(

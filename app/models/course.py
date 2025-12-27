@@ -10,7 +10,7 @@ class Course(Base):
     id_course = Column(Integer, primary_key=True, autoincrement=True, index=True)
     base_version = Column(Integer, ForeignKey("course_version.id_version"))
     id_course_parent = Column(Integer, ForeignKey("course.id_course"), nullable=True)
-    name_course = Column(String(50), nullable=False)
+    name_course = Column(String(100), nullable=False)
     description_course = Column(Text, nullable=False)
     image = Column(String(200), nullable=False)
     id_user = Column(Integer, ForeignKey("user.id"))
