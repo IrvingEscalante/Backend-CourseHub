@@ -9,17 +9,14 @@ class CourseVersion(Base):
     id_version = Column(Integer, primary_key=True, autoincrement=True, index=True)
     id_course = Column(Integer, ForeignKey("course.id_course"))
     version_number = Column(Integer, nullable=False)
+    snapshot = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.now())
     created_by = Column(Integer)
-    base_version = Column(Integer, nullable=True)
 
     course = relationship(
         "Course",
         back_populates="versions",
         foreign_keys=[id_course]
     )
-    modules = relationship("ModuleCourse", back_populates="course_version")
-    publishes = relationship("CoursePublish", back_populates="course_version")
-    contents = relationship("ContentCoursePublish", back_populates="course_version")
 
 

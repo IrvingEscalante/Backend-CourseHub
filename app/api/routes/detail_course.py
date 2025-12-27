@@ -7,7 +7,7 @@ from app.models.user import User
 from typing import List
 from app.models.module_course import ModuleCourse
 from app.utils.security import get_current_user
-from app.schemas.module_course_schema import ModuleCourseResponse
+from app.schemas.module_course_schema import ModuleCourseResponse, CreateModule, EditModule
 from app.schemas.course_schema import CourseResponse, CourseFullResponse
 from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.course_publish import CoursePublish
@@ -88,7 +88,7 @@ def get_detail(
 
 @router.get("/modules/{id_course}", response_model=List[ModuleCourseResponse])
 def get_modules(id_course:int, db:Session = Depends(get_db)):
-    module_course = db.query(ModuleCourse).filter(ModuleCourse.id_course == id_course).all()
+    module_course = db.query(ModuleCourse).filter(ModuleCourse.id_course == id_course).order_by(ModuleCourse.order_index.asc()).all()
     if not module_course:
         raise HTTPException(status_code=404, detail="No se tiene modulos este curso")
     return module_course

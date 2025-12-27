@@ -25,12 +25,11 @@ import os
 
 router = APIRouter()
 
-def create_course_version(db: Session, course_id: int, created_by: int, base_version: Optional[int] = None) -> CourseVersion:
+def create_course_version(db: Session, course_id: int, created_by: int) -> CourseVersion:
     version = CourseVersion(
         id_course=course_id,
         version_number=1,  # This will be updated later
-        created_by=created_by,
-        base_version=base_version
+        created_by=created_by
     )
     db.add(version)
     db.flush()
@@ -63,7 +62,7 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     course = Course(
         name_course=payload.title,
         description_course=payload.description or "",
-        image=cover_url,
+        image=cover_url or "",
         id_user=current_user.id,
         id_author_user=current_user.id,
         id_theme=payload.topic,
@@ -81,28 +80,24 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
 
         db_module = ModuleCourse(
             id_course=course.id_course,
-            id_version=version.id_version,
             name_module=module.title,
-            description_module=module.description,
+            description_module=module.description or "",
             status_module=True,
             order_index=mi,
         )
         db.add(db_module)
         db.flush()
-        db_module.id_original_module = db_module.id_module
 
         for publication in module.publications:
 
             db_pub = CoursePublish(
                 id_module=db_module.id_module,
-                id_version=version.id_version,
                 name_publication=publication.title,
-                description=publication.description,
+                description=publication.description or "",
                 status_publish=True
             )
             db.add(db_pub)
             db.flush()
-            db_pub.id_original_publish = db_pub.id_course_publish
 
             for res in publication.resources:
 
@@ -149,7 +144,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
 
                     return {
                         "id_course_publish": pub_id,
-                        "id_version": version.id_version,
                         "content": url,
                         "status": True,
                         "type_content": type_content
@@ -169,8 +163,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
         content = ContentCoursePublish(**r)
         db.add(content)
         db.flush()
-
-        content.id_original_content = content.id_content_course_publish
 
     db.commit()
 
@@ -329,18 +321,16 @@ def copy_course(
         db.add(new_course)
         db.flush()
 
-        fork_version = create_course_version(db, new_course.id_course, current_user.id, base_version.id_version)
+        fork_version = create_course_version(db, new_course.id_course, current_user.id)
         new_course.base_version = fork_version.id_version
 
         for module in original_course.modules:
             new_module = ModuleCourse(
                 id_course=new_course.id_course,
-                id_version=fork_version.id_version,
                 name_module=module.name_module,
                 description_module=module.description_module,
                 status_module=module.status_module,
-                order_index=module.order_index,
-                id_original_module=module.id_module
+                order_index=module.order_index
             )
             db.add(new_module)
             db.flush()
@@ -349,11 +339,9 @@ def copy_course(
             for publish in module.course_publish:
                 new_publish = CoursePublish(
                     id_module=new_module.id_module,
-                    id_version=fork_version.id_version,
                     name_publication=publish.name_publication,
                     description=publish.description,
-                    status_publish=publish.status_publish,
-                    id_original_publish=publish.id_course_publish
+                    status_publish=publish.status_publish
                 )
                 db.add(new_publish)
                 db.flush()
@@ -362,11 +350,9 @@ def copy_course(
                 for content in publish.content:
                     new_content = ContentCoursePublish(
                         id_course_publish=new_publish.id_course_publish,
-                        id_version=fork_version.id_version,
                         content=content.content,
                         status=content.status,
-                        type_content=content.type_content,
-                        id_original_content=content.id_content_course_publish
+                        type_content=content.type_content
                     )
                     db.add(new_content)
 
@@ -458,7 +444,7 @@ async def edit_course(
     # Crear nueva versión del curso solo si hay cambios en módulos/publicaciones/contenido
     latest_version = db.query(CourseVersion).filter(CourseVersion.id_course == course.id_course)\
                     .order_by(CourseVersion.version_number.desc()).first()
-    new_version = create_course_version(db, course.id_course, current_user.id, course.base_version)
+    new_version = create_course_version(db, course.id_course, current_user.id)
     new_version.version_number = (latest_version.version_number + 1) if latest_version else 1
     db.add(new_version)
     db.flush()
@@ -473,12 +459,10 @@ async def edit_course(
         if not original_module or m["title"] != original_module.name_module or m.get("description","") != original_module.description_module:
             db_module = ModuleCourse(
                 id_course=course.id_course,
-                id_version=new_version.id_version,
                 name_module=m["title"],
                 description_module=m.get("description",""),
                 status_module=True,
-                order_index=mi,
-                id_original_module=original_module.id_module if original_module else None
+                order_index=mi
             )
             db.add(db_module)
             db.flush()
@@ -494,11 +478,9 @@ async def edit_course(
             if not original_pub or p["title"] != original_pub.name_publication or p.get("description","") != original_pub.description:
                 db_pub = CoursePublish(
                     id_module=db_module.id_module,
-                    id_version=new_version.id_version,
                     name_publication=p["title"],
                     description=p.get("description",""),
-                    status_publish=True,
-                    id_original_publish=original_pub.id_course_publish if original_pub else None
+                    status_publish=True
                 )
                 db.add(db_pub)
                 db.flush()
@@ -532,11 +514,9 @@ async def edit_course(
 
                     return {
                         "id_course_publish": pub_id,
-                        "id_version": new_version.id_version,
                         "content": url,
                         "status": True,
-                        "type_content": type_content,
-                        "id_original_content": r.get("id_content")
+                        "type_content": type_content
                     }
 
                 upload_tasks.append(process_resource(r, db_pub.id_course_publish))
@@ -546,8 +526,6 @@ async def edit_course(
                 content = ContentCoursePublish(**r)
                 db.add(content)
                 db.flush()
-                if not content.id_original_content:
-                    content.id_original_content = content.id_content_course_publish
 
     db.commit()
     return {"message": "Curso editado exitosamente", "course_id": course.id_course}

@@ -15,4 +15,4 @@ class ThemeResponse(ThemeBase):
     id_theme: int
 
     class Config:
-        orm_mode = True  # Esto permite trabajar con objetos ORM directamente
+        from_attributes = True

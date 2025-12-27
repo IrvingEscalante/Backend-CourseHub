@@ -19,4 +19,4 @@ class RecoverPasswordRead(RecoverPasswordBase):
     date_creation: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
