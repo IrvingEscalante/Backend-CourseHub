@@ -26,3 +26,12 @@ class EditModule(BaseModel):
     description_module: str | None = None
     status_module: bool | None = None
     order_index: int | None = None
+
+
+class ModuleReorderItem(BaseModel):
+    id_module: int
+    order_index: int
+
+
+class ModuleReorderRequest(BaseModel):
+    modules: list[ModuleReorderItem]

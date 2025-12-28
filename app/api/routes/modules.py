@@ -7,7 +7,7 @@ from app.models.user import User
 from typing import List
 from app.models.module_course import ModuleCourse
 from app.utils.security import get_current_user
-from app.schemas.module_course_schema import ModuleCourseResponse, CreateModule, EditModule
+from app.schemas.module_course_schema import ModuleCourseResponse, CreateModule, EditModule, ModuleReorderRequest
 from app.schemas.course_schema import CourseResponse, CourseFullResponse
 from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.course_publish import CoursePublish
@@ -83,3 +83,35 @@ def delete_module(id_module:int, db:Session = Depends(get_db), current_user: Use
     db.commit()
     db.refresh(existing_module)
     return existing_module
+
+
+@router.put("/reorder/{id_course}", response_model=list[ModuleCourseResponse])
+def reorder_modules(id_course: int, payload: ModuleReorderRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    course = db.query(Course).filter(Course.id_course == id_course, Course.id_user == current_user.id).first()
+    if not course:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    module_ids = [m.id_module for m in payload.modules]
+    modules_db = db.query(ModuleCourse).filter(ModuleCourse.id_module.in_(module_ids)).all()
+
+    if len(modules_db) != len(module_ids):
+        raise HTTPException(status_code=404, detail="Algunos módulos no existen")
+
+    # Ensure modules belong to the course
+    for mod in modules_db:
+        if mod.id_course != id_course:
+            raise HTTPException(status_code=403, detail="Intento de modificar módulos de otro curso")
+
+    # Apply new order
+    order_map = {m.id_module: m.order_index for m in payload.modules}
+    for mod in modules_db:
+        mod.order_index = order_map.get(mod.id_module, mod.order_index)
+
+    db.commit()
+
+    # Return modules sorted by new order
+    modules_db = db.query(ModuleCourse).filter(ModuleCourse.id_course == id_course, ModuleCourse.status_module == 1).order_by(ModuleCourse.order_index.asc()).all()
+    return modules_db
