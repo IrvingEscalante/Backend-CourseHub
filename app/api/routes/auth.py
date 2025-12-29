@@ -6,6 +6,9 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.email_verification import EmailVerification  
 import random
+import secrets
+from app.models.recover_password import RecoverPassword
+from app.services.email_services import send_recover_password
 from app.schemas.user_schema import UserCreate, Token, UserPrivateOut
 from app.schemas.verify_email import VerifyEmail
 from app.utils.security import hash_password, verify_password, create_access_token
@@ -173,8 +176,9 @@ async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
         "success": True,
         "message": "Se ha enviado el correo electronico"}
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=MessageOut)
 async def change_password(data: PasswordChange, db: Session = Depends(get_db)):
+    print(data)
     recover = db.query(RecoverPassword).filter(RecoverPassword.token == data.token).first()
 
     if not recover:
