@@ -110,7 +110,6 @@ class CoursePayload(BaseModel):
     title: str
     topic: Optional[int]
     description: Optional[str]
-    modules: List[ModulePayload]
 
 class ResourceResponse(BaseModel):
     id_content_course_publish: int

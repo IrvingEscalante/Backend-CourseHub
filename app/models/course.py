@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+import uuid
 from app.models.theme import Theme
 from datetime import datetime
 
@@ -8,6 +9,7 @@ class Course(Base):
     __tablename__='course'
 
     id_course = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    uuid_course = Column(String(36), default=lambda: str(uuid.uuid4()), nullable=False)
     base_version = Column(Integer, ForeignKey("course_version.id_version"))
     id_course_parent = Column(Integer, ForeignKey("course.id_course"), nullable=True)
     name_course = Column(String(100), nullable=False)

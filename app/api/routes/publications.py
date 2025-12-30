@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
 from app.models.course import Course
+import uuid
 from app.models.user import User
 from app.models.module_course import ModuleCourse
 from typing import List, Optional
@@ -130,6 +131,7 @@ async def create_publication(
         # Crear registro de contenido
         if content_value:
             new_content = ContentCoursePublish(
+                uuid_content=str(uuid.uuid4()),
                 id_course_publish=new_publication.id_course_publish,
                 content=content_value,
                 type_content=content_type,

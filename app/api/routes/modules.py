@@ -4,6 +4,7 @@ from sqlalchemy import func
 from app.db.session import get_db
 from app.models.course import Course
 from app.models.user import User
+import uuid
 from typing import List
 from app.models.module_course import ModuleCourse
 from app.utils.security import get_current_user

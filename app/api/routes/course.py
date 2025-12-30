@@ -52,114 +52,34 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
     }
 
     cover_url = None
-    if cover:
+    if cover is not None:
         compressed = await compress_image(cover)
         cover_url = await upload_to_cloudinary(
             compressed,
             "coursehub_presets"
         )
 
-    course = Course(
-        name_course=payload.title,
-        description_course=payload.description or "",
-        image=cover_url or "",
-        id_user=current_user.id,
-        id_author_user=current_user.id,
-        id_theme=payload.topic,
-        is_forked=False,
-        status_course=True
-    )
-    db.add(course)
-    db.flush()
-    version = create_course_version(db, course.id_course, current_user.id)
-    course.base_version = version.id_version
-
-    upload_tasks = []
-
-    for mi, module in enumerate(payload.modules):
-
-        db_module = ModuleCourse(
-            id_course=course.id_course,
-            name_module=module.title,
-            description_module=module.description or "",
-            status_module=True,
-            order_index=mi,
+        course = Course(
+            name_course=payload.title,
+            description_course=payload.description or "",
+            image=cover_url or "",
+            id_user=current_user.id,
+            id_author_user=current_user.id,
+            id_theme=payload.topic,
+            is_forked=False,
+            status_course=True
         )
-        db.add(db_module)
+        db.add(course)
         db.flush()
+        version = create_course_version(db, course.id_course, current_user.id)
+        course.base_version = version.id_version
 
-        for publication in module.publications:
+        db.commit()
 
-            db_pub = CoursePublish(
-                id_module=db_module.id_module,
-                name_publication=publication.title,
-                description=publication.description or "",
-                status_publish=True
-            )
-            db.add(db_pub)
-            db.flush()
-
-            for res in publication.resources:
-
-                async def process_resource(
-                    *,
-                    resource,
-                    pub_id,
-                    files
-                ):
-                    upload_type = resource.type
-
-                    if upload_type in ("image", "archive"):
-                        file_key = resource.fileKey
-
-                        if file_key not in files:
-                            raise HTTPException(
-                                400,
-                                f"Falta archivo: {file_key}"
-                            )
-
-                        file = files[file_key]
-                        file.file.seek(0)
-
-                        if upload_type == "image":
-                            comp = await compress_image(file)
-                            url = await upload_to_cloudinary(
-                                comp,
-                                "coursehub_resources_presets"
-                            )
-                            type_content = "image"
-                        else:
-                            ext = file.filename.split(".")[-1].lower()
-                            name = f"{pub_id}_{file_key}.{ext}"
-                            url = await save_file_local(file, name)
-                            type_content = ext
-
-                    else:
-                        url = resource.value
-                        type_content = (
-                            "video-embed"
-                            if upload_type == "video-embed"
-                            else "text"
-                        )
-
-                    return {
-                        "id_course_publish": pub_id,
-                        "content": url,
-                        "status": True,
-                        "type_content": type_content
-                    }
-
-                upload_tasks.append(
-                    process_resource(
-                        resource=res,
-                        pub_id=db_pub.id_course_publish,
-                        files=files_dict
-                    )
-                )
-
-    results = await asyncio.gather(*upload_tasks)
-
-    for r in results:
+        return {
+            "message": "Curso creado exitosamente",
+            "course_id": course.id_course
+        }
         content = ContentCoursePublish(**r)
         db.add(content)
         db.flush()
@@ -262,8 +182,10 @@ def copy_course(
     db: Session = Depends(get_db),
     current_user:User=Depends(get_current_user)
 ):
+
     if not current_user:
         raise HTTPException(status_code=403, detail="Inicia sesion primero para poder copiar un curso")
+    
     original_course = (
         db.query(Course)
         .options(
@@ -274,6 +196,13 @@ def copy_course(
         .filter(Course.id_course == id_course, Course.status_course == True)
         .first()
     )
+
+    if not original_course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+
+    if original_course.id_user == current_user.id:
+        raise HTTPException(status_code=403, detail="No puedes forkear el curso ya que tu eres el dueño")
+
     existing_fork = (
         db.query(Course)
         .filter(
@@ -289,13 +218,6 @@ def copy_course(
             "Ya tienes un fork de este curso"
         )
 
-
-    if original_course.id_user == current_user.id:
-        raise HTTPException(status_code=403, detail="No puedes forkear el curso ya que tu eres el dueño")
-
-    if not original_course:
-        raise HTTPException(status_code=404, detail="Curso no encontrado")
-
     try:
         base_version = (
             db.query(CourseVersion)
@@ -309,13 +231,15 @@ def copy_course(
                 detail="El curso original no tiene versión base"
             )
 
+        import uuid
         new_course = Course(
             id_course_parent=original_course.id_course,
+            uuid_course=original_course.uuid_course,
             name_course=original_course.name_course,
             description_course=original_course.description_course,
             image=original_course.image,
             id_user=current_user.id,
-            id_author_user=original_course.id,
+            id_author_user=original_course.id_user,
             id_theme=original_course.id_theme,
             is_forked=True,
             status_course=True,
@@ -328,6 +252,7 @@ def copy_course(
 
         for module in original_course.modules:
             new_module = ModuleCourse(
+                uuid_module=module.uuid_module,
                 id_course=new_course.id_course,
                 name_module=module.name_module,
                 description_module=module.description_module,
@@ -340,6 +265,7 @@ def copy_course(
             # 4️⃣ Clonar publicaciones
             for publish in module.course_publish:
                 new_publish = CoursePublish(
+                    uuid_publish=publish.uuid_publish,
                     id_module=new_module.id_module,
                     name_publication=publish.name_publication,
                     description=publish.description,
@@ -351,6 +277,7 @@ def copy_course(
                 # 5️⃣ Clonar contenido
                 for content in publish.content:
                     new_content = ContentCoursePublish(
+                        uuid_content=content.uuid_content,
                         id_course_publish=new_publish.id_course_publish,
                         content=content.content,
                         status=content.status,
