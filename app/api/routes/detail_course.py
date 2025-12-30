@@ -95,9 +95,7 @@ def get_modules(id_course:int, db:Session = Depends(get_db)):
 
 @router.get("/publications/{id_module}", response_model=List[CoursePublishResponse])
 def get_publish(id_module:int,db:Session = Depends(get_db)):
-    publish_course = db.query(CoursePublish).filter(CoursePublish.id_module == id_module).all()
-    if not publish_course:
-        raise HTTPException(status_code=404, detail="No se tiene publicaciones este modulo")
+    publish_course = db.query(CoursePublish).filter(CoursePublish.id_module == id_module, CoursePublish.status_publish == 1).all()
     return publish_course
 
 @router.get("/course/raw/{id}", response_model=CourseFullResponse)

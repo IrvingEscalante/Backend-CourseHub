@@ -315,7 +315,7 @@ def copy_course(
             description_course=original_course.description_course,
             image=original_course.image,
             id_user=current_user.id,
-            id_author_user=original_course.id_author_user,
+            id_author_user=original_course.id,
             id_theme=original_course.id_theme,
             is_forked=True,
             status_course=True,
