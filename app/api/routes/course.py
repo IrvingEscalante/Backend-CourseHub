@@ -17,6 +17,7 @@ from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
 from app.services.user_services import get_favorite_ids
 from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
+from app.services.version_services import serialize_course_to_snapshot, compare_snapshots
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
 import asyncio
 from PIL import Image
@@ -26,10 +27,22 @@ import os
 router = APIRouter()
 
 def create_course_version(db: Session, course_id: int, created_by: int) -> CourseVersion:
+    # Serializar el curso completo con todos sus datos anidados
+    # serialize_course_to_snapshot retorna un diccionario
+    snapshot_dict = serialize_course_to_snapshot(db, course_id)
+    
+    # Obtener número de versión
+    latest_version = db.query(CourseVersion).filter(
+        CourseVersion.id_course == course_id
+    ).order_by(CourseVersion.version_number.desc()).first()
+    
+    version_number = (latest_version.version_number + 1) if latest_version else 1
+    
     version = CourseVersion(
         id_course=course_id,
-        version_number=1,  # This will be updated later
-        created_by=created_by
+        version_number=version_number,
+        created_by=created_by,
+        snapshot=snapshot_dict
     )
     db.add(version)
     db.flush()
@@ -46,11 +59,6 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
         json.loads(form["payload"])
     )
 
-    files_dict = {
-        k: v for k, v in form.items()
-        if hasattr(v, "filename") and v.filename
-    }
-
     cover_url = None
     if cover is not None:
         compressed = await compress_image(cover)
@@ -59,30 +67,22 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
             "coursehub_presets"
         )
 
-        course = Course(
-            name_course=payload.title,
-            description_course=payload.description or "",
-            image=cover_url or "",
-            id_user=current_user.id,
-            id_author_user=current_user.id,
-            id_theme=payload.topic,
-            is_forked=False,
-            status_course=True
-        )
-        db.add(course)
-        db.flush()
-        version = create_course_version(db, course.id_course, current_user.id)
-        course.base_version = version.id_version
-
-        db.commit()
-
-        return {
-            "message": "Curso creado exitosamente",
-            "course_id": course.id_course
-        }
-        content = ContentCoursePublish(**r)
-        db.add(content)
-        db.flush()
+    course = Course(
+        name_course=payload.title,
+        description_course=payload.description or "",
+        image=cover_url or "",
+        id_user=current_user.id,
+        id_author_user=current_user.id,
+        id_theme=payload.topic,
+        is_forked=False,
+        status_course=True
+    )
+    db.add(course)
+    db.flush()
+    
+    # Crear versión inicial del curso
+    version = create_course_version(db, course.id_course, current_user.id)
+    course.base_version = version.id_version
 
     db.commit()
 
@@ -503,3 +503,145 @@ async def update_course_basics(
         is_forked=course.is_forked,
         status_course=course.status_course
     )
+
+
+@router.post("/courses/{id_course}/commit")
+def commit_course_version(
+    id_course: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Crea una nueva versión del curso (commit manual).
+    Solo el dueño del curso puede hacer commit.
+    """
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    print(course.id_user)
+    print(current_user.id)
+    if course.id_user != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para hacer commit en este curso")
+    
+    try:
+        # Crear nueva versión
+        new_version = create_course_version(db, id_course, current_user.id)
+        
+        # Obtener versión anterior si existe
+        previous_version = (
+            db.query(CourseVersion)
+            .filter(CourseVersion.id_course == id_course)
+            .filter(CourseVersion.id_version != new_version.id_version)
+            .order_by(CourseVersion.version_number.desc())
+            .first()
+        )
+        
+        # Calcular cambios si hay versión anterior
+        changes = []
+        if previous_version:
+            changes = compare_snapshots(previous_version.snapshot, new_version.snapshot)
+        
+        db.commit()
+        
+        return {
+            "message": "Versión creada exitosamente",
+            "version_id": new_version.id_version,
+            "version_number": new_version.version_number,
+            "changes_count": len(changes),
+            "changes": changes
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al crear versión: {str(e)}")
+
+
+@router.get("/courses/{id_course}/versions")
+def get_course_versions(
+    id_course: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    Obtiene el historial de versiones de un curso
+    """
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    
+    versions = (
+        db.query(CourseVersion)
+        .filter(CourseVersion.id_course == id_course)
+        .order_by(CourseVersion.version_number.desc())
+        .all()
+    )
+    
+    return {
+        "id_course": id_course,
+        "total_versions": len(versions),
+        "versions": [
+            {
+                "id_version": v.id_version,
+                "version_number": v.version_number,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+                "created_by": v.created_by
+            }
+            for v in versions
+        ]
+    }
+
+
+@router.get("/courses/{id_course}/versions/{version_id}/diff")
+def get_version_diff(
+    id_course: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    Obtiene los cambios (diff) entre esta versión y la anterior
+    """
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    
+    current_version = (
+        db.query(CourseVersion)
+        .filter(CourseVersion.id_version == version_id, CourseVersion.id_course == id_course)
+        .first()
+    )
+    
+    if not current_version:
+        raise HTTPException(status_code=404, detail="Versión no encontrada")
+    
+    # Obtener versión anterior
+    previous_version = (
+        db.query(CourseVersion)
+        .filter(CourseVersion.id_course == id_course)
+        .filter(CourseVersion.version_number < current_version.version_number)
+        .order_by(CourseVersion.version_number.desc())
+        .first()
+    )
+    
+    if not previous_version:
+        return {
+            "version_id": version_id,
+            "version_number": current_version.version_number,
+            "is_initial_version": True,
+            "changes": []
+        }
+    
+    # Calcular diff
+    changes = compare_snapshots(previous_version.snapshot, current_version.snapshot)
+    
+    return {
+        "version_id": version_id,
+        "version_number": current_version.version_number,
+        "previous_version_number": previous_version.version_number,
+        "is_initial_version": False,
+        "changes_count": len(changes),
+        "changes": changes
+    }
+
