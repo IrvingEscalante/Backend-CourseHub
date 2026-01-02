@@ -6,16 +6,18 @@ from app.schemas.user_schema import AuthorResponse
 class PullRequestCreate(BaseModel):
     id_course_source: int
     id_course_target: int
-    id_course_version_source: int
-    id_course_version_target: int
-    title: str
+    id_course_version_source: int | None = None  # Opcional - se usará la última versión
+    id_course_version_target: int | None = None  # Opcional - se usará la última versión
+    title: str | None = None
     description: str | None = None
 
 class PullRequestBasicOut(BaseModel):
     id_pull_request: int
-    title: str
-    description_pull_request: str
+    title: Optional[str] = None
+    description_pull_request: Optional[str] = None
     status_pull: str
+    id_course_source: int
+    id_course_target: int
     merge_status: str
     date_created: datetime
     date_resolved: Optional[datetime]

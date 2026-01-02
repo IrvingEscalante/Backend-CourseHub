@@ -32,6 +32,7 @@ class CourseCreate(CourseBase):
 
 class CourseResponse(BaseModel):
     id_course: int
+    id_course_parent: Optional[int] = None
     name_course: str
     description_course: str
     image: Optional[str]
