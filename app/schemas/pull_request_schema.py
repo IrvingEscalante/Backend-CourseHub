@@ -6,6 +6,8 @@ from app.schemas.user_schema import AuthorResponse
 class PullRequestCreate(BaseModel):
     id_course_source: int
     id_course_target: int
+    id_course_version_source: int
+    id_course_version_target: int
     title: str
     description: str | None = None
 

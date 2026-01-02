@@ -5,6 +5,8 @@ from app.models.course import Course
 from sqlalchemy.orm import joinedload
 from app.models.module_course import ModuleCourse
 from app.models.course_publish import CoursePublish
+from app.models.pull_request import PullRequest
+from app.models.pullRequestChange import PullRequestChange
 
 
 def serialize_course_to_snapshot(db: Session, course_id: int) -> str:
@@ -310,3 +312,67 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
                         })
     
     return changes
+
+def save_changes_to_db(db: Session, pull_request_id: int, changes: list) -> None:
+    """
+    Guarda los cambios (diffs) en la tabla PullRequestChange
+    Valida y convierte los datos al formato correcto
+    """
+    import json
+    
+    if not changes:
+        return
+    
+    for change in changes:
+        try:
+            # Validar datos obligatorios
+            if not change.get("entity_type") or not change.get("action"):
+                continue
+            
+            # Preparar valores
+            old_value = None
+            new_value = None
+            
+            # Convertir valores simples a string si existen
+            if change.get("old_value") is not None:
+                old_value = str(change.get("old_value"))
+            
+            if change.get("new_value") is not None:
+                new_value = str(change.get("new_value"))
+            
+            # Preparar datos JSON (para cambios complejos)
+            old_data = None
+            new_data = None
+            
+            if change.get("old_data"):
+                old_data = change.get("old_data")
+            
+            if change.get("new_data"):
+                new_data = change.get("new_data")
+            
+            # Crear registro de cambio
+            pr_change = PullRequestChange(
+                id_pull_request=pull_request_id,
+                entity_type=change.get("entity_type"),
+                entity_id=change.get("entity_id"),
+                entity_uuid=change.get("uuid"),
+                action=change.get("action"),
+                reason=change.get("reason"),
+                field=change.get("field"),
+                old_value=old_value,
+                new_value=new_value,
+                old_data=old_data,
+                new_data=new_data
+            )
+            db.add(pr_change)
+        
+        except Exception as e:
+            print(f"Error al guardar cambio: {str(e)}")
+            continue
+    
+    # Un solo commit al final
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise ValueError(f"Error al guardar cambios en la BD: {str(e)}")
