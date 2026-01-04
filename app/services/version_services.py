@@ -200,12 +200,10 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
                 "new_data": new_module
             })
     
-    # 3. Comparar publicaciones SOLO para módulos que existían en ambos snapshots
-    for uuid_module in old_modules.keys():
-        if uuid_module not in new_modules:
-            # Módulo fue eliminado, skip
-            continue
-        
+    # 3. Comparar publicaciones para TODOS los módulos (viejos y nuevos)
+    all_module_uuids = set(old_modules.keys()) | set(new_modules.keys())
+    
+    for uuid_module in all_module_uuids:
         old_module = old_modules.get(uuid_module, {})
         new_module = new_modules.get(uuid_module, {})
         
@@ -272,12 +270,8 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
                     "new_data": new_pub
                 })
         
-        # 4. Comparar contenidos SOLO para publicaciones que existían en ambos
-        for uuid_pub in old_pubs.keys():
-            if uuid_pub not in new_pubs:
-                # Publicación fue eliminada, skip
-                continue
-            
+        # 4. Comparar contenidos para publicaciones que existen en ambos o son nuevas
+        for uuid_pub in set(old_pubs.keys()) | set(new_pubs.keys()):
             old_pub = old_pubs.get(uuid_pub, {})
             new_pub = new_pubs.get(uuid_pub, {})
             

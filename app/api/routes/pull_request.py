@@ -261,7 +261,8 @@ def get_pull_request_changes(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Obtiene todos los cambios asociados a un Pull Request
+    Obtiene todos los cambios asociados a un Pull Request con información del contexto
+    (nombre del padre: módulo para publicaciones, publicación para contenidos, etc)
     """
     if not current_user:
         raise HTTPException(status_code=401, detail="No autenticado")
@@ -285,10 +286,79 @@ def get_pull_request_changes(
         PullRequestChange.id_pull_request == id_pull_request
     ).order_by(PullRequestChange.date_created).all()
     
+    # Enriquecer cambios con información del padre
+    enriched_changes = []
+    for change in changes:
+        change_dict = {
+            "id_change": change.id_change,
+            "id_pull_request": change.id_pull_request,
+            "entity_type": change.entity_type,
+            "entity_id": change.entity_id,
+            "entity_uuid": change.entity_uuid,
+            "action": change.action,
+            "reason": change.reason,
+            "old_data": change.old_data,
+            "new_data": change.new_data,
+            "field": change.field,
+            "old_value": change.old_value,
+            "new_value": change.new_value,
+            "date_created": change.date_created,
+            # Información del contexto
+            "parent_info": None
+        }
+        
+        # Agregar información del padre según el tipo de entidad
+        if change.entity_type == "content":
+            # Obtener la publicación padre
+            if change.new_data and "id_course_publish" in change.new_data:
+                pub_id = change.new_data["id_course_publish"]
+            elif change.old_data and "id_course_publish" in change.old_data:
+                pub_id = change.old_data["id_course_publish"]
+            else:
+                pub_id = None
+            
+            if pub_id:
+                publication = db.query(CoursePublish).filter(
+                    CoursePublish.id_course_publish == pub_id
+                ).first()
+                if publication:
+                    change_dict["parent_info"] = {
+                        "parent_type": "publication",
+                        "parent_id": publication.id_course_publish,
+                        "parent_name": publication.name_publication
+                    }
+        
+        elif change.entity_type == "publication":
+            # Obtener el módulo padre
+            if change.new_data and "id_module" in change.new_data:
+                module_id = change.new_data["id_module"]
+            elif change.old_data and "id_module" in change.old_data:
+                module_id = change.old_data["id_module"]
+            else:
+                module_id = None
+            
+            if module_id:
+                module = db.query(ModuleCourse).filter(
+                    ModuleCourse.id_module == module_id
+                ).first()
+                if module:
+                    change_dict["parent_info"] = {
+                        "parent_type": "module",
+                        "parent_id": module.id_module,
+                        "parent_name": module.name_module
+                    }
+        
+        elif change.entity_type == "module":
+            # El padre del módulo es el curso, pero generalmente no es necesario mostrar
+            # Se puede agregar si es necesario
+            pass
+        
+        enriched_changes.append(change_dict)
+    
     return {
         "id_pull_request": id_pull_request,
-        "changes": changes,
-        "total": len(changes)
+        "changes": enriched_changes,
+        "total": len(enriched_changes)
     }
 
 
