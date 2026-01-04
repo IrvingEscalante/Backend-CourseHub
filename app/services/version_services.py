@@ -13,6 +13,7 @@ def serialize_course_to_snapshot(db: Session, course_id: int) -> str:
     """
     Serializa el curso completo con módulos, publicaciones y contenidos anidados
     usando la estructura de CourseFullResponse
+    NOTA: Incluye TODOS los elementos (incluso soft-deleted) para poder detectar cambios de status
     """
     # Obtener curso con todas las relaciones cargadas
     course = db.query(Course).options(
@@ -41,7 +42,7 @@ def serialize_course_to_snapshot(db: Session, course_id: int) -> str:
         "modules": []
     }
     
-    # Procesar módulos
+    # Procesar módulos (INCLUYENDO soft-deleted para detectar cambios de status)
     if course.modules:
         for module in sorted(course.modules, key=lambda m: m.order_index or 0):
             module_data = {
@@ -98,6 +99,7 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
     Compara dos snapshots y retorna una lista de cambios (diffs)
     old_snapshot y new_snapshot son diccionarios (no strings)
     Detecta eliminaciones lógicas cuando status cambia a false/0
+    Solo reporta cambios reales (no duplicados)
     """
     old_snapshot = old_snapshot if old_snapshot else {}
     new_snapshot = new_snapshot if new_snapshot else {}
@@ -115,8 +117,8 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
             if field == "status_course" and not new_value:
                 changes.append({
                     "entity_type": "course",
-                    "entity_id": new_snapshot["id_course"],
-                    "uuid": new_snapshot["uuid_course"],
+                    "entity_id": new_snapshot.get("id_course"),
+                    "uuid": new_snapshot.get("uuid_course"),
                     "action": "DELETE",
                     "field": field,
                     "old_value": old_value,
@@ -125,8 +127,8 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
             else:
                 changes.append({
                     "entity_type": "course",
-                    "entity_id": new_snapshot["id_course"],
-                    "uuid": new_snapshot["uuid_course"],
+                    "entity_id": new_snapshot.get("id_course"),
+                    "uuid": new_snapshot.get("uuid_course"),
                     "action": "UPDATE",
                     "field": field,
                     "old_value": old_value,
@@ -134,15 +136,15 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
                 })
     
     # 2. Comparar módulos
-    old_modules = {m["uuid_module"]: m for m in old_snapshot.get("modules", [])}
-    new_modules = {m["uuid_module"]: m for m in new_snapshot.get("modules", [])}
+    old_modules = {m.get("uuid_module"): m for m in old_snapshot.get("modules", []) if m.get("uuid_module")}
+    new_modules = {m.get("uuid_module"): m for m in new_snapshot.get("modules", []) if m.get("uuid_module")}
     
     # Módulos eliminados (por desaparición o por status = false)
     for uuid_module, module in old_modules.items():
         if uuid_module not in new_modules:
             changes.append({
                 "entity_type": "module",
-                "entity_id": module["id_module"],
+                "entity_id": module.get("id_module"),
                 "uuid": uuid_module,
                 "action": "DELETE",
                 "reason": "removed",
@@ -155,55 +157,67 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
         old_module = old_modules.get(uuid_module)
         
         if not old_module:
+            # Módulo completamente nuevo
             changes.append({
                 "entity_type": "module",
-                "entity_id": new_module["id_module"],
+                "entity_id": new_module.get("id_module"),
                 "uuid": uuid_module,
                 "action": "ADD",
                 "old_data": None,
                 "new_data": new_module
             })
-        else:
-            # Verificar si el status cambió a false (eliminación lógica)
-            old_status = old_module.get("status_module", True)
-            new_status = new_module.get("status_module", True)
-            
-            if old_status and not new_status:
-                # Cambio de status a false = eliminación lógica
-                changes.append({
-                    "entity_type": "module",
-                    "entity_id": new_module["id_module"],
-                    "uuid": uuid_module,
-                    "action": "DELETE",
-                    "reason": "status_disabled",
-                    "old_data": old_module,
-                    "new_data": new_module
-                })
-            elif (old_module["name_module"] != new_module["name_module"] or
-                old_module["description_module"] != new_module["description_module"] or
-                old_module["order_index"] != new_module["order_index"]):
-                changes.append({
-                    "entity_type": "module",
-                    "entity_id": new_module["id_module"],
-                    "uuid": uuid_module,
-                    "action": "UPDATE",
-                    "old_data": old_module,
-                    "new_data": new_module
-                })
+            # Cuando un módulo es nuevo, todas sus publicaciones y contenidos son nuevos
+            # No hay que compararlos por separado
+            continue
+        
+        # ✅ DETECTAR ELIMINACIÓN POR STATUS = FALSE
+        old_status = old_module.get("status_module", True)
+        new_status = new_module.get("status_module", True)
+        
+        if old_status and not new_status:
+            # Cambio de status True → False = ELIMINACIÓN
+            changes.append({
+                "entity_type": "module",
+                "entity_id": new_module.get("id_module"),
+                "uuid": uuid_module,
+                "action": "DELETE",
+                "reason": "status_disabled",
+                "old_data": old_module,
+                "new_data": new_module
+            })
+            continue  # No comparar más propiedades si fue eliminado
+        
+        # Si el módulo existe en ambos y está activo, comparar propiedades
+        if (old_module.get("name_module") != new_module.get("name_module") or
+            old_module.get("description_module") != new_module.get("description_module") or
+            old_module.get("order_index") != new_module.get("order_index")):
+            changes.append({
+                "entity_type": "module",
+                "entity_id": new_module.get("id_module"),
+                "uuid": uuid_module,
+                "action": "UPDATE",
+                "old_data": old_module,
+                "new_data": new_module
+            })
     
-    # 3. Comparar publicaciones
-    for uuid_module, new_module in new_modules.items():
+    # 3. Comparar publicaciones SOLO para módulos que existían en ambos snapshots
+    for uuid_module in old_modules.keys():
+        if uuid_module not in new_modules:
+            # Módulo fue eliminado, skip
+            continue
+        
         old_module = old_modules.get(uuid_module, {})
+        new_module = new_modules.get(uuid_module, {})
         
-        old_pubs = {p["uuid_publish"]: p for p in old_module.get("course_publish", [])}
-        new_pubs = {p["uuid_publish"]: p for p in new_module.get("course_publish", [])}
+        old_pubs = {p.get("uuid_publish"): p for p in old_module.get("course_publish", []) if p.get("uuid_publish")}
+        new_pubs = {p.get("uuid_publish"): p for p in new_module.get("course_publish", []) if p.get("uuid_publish")}
         
-        # Publicaciones eliminadas (por desaparición o por status = false)
+        # Publicaciones eliminadas
         for uuid_pub, pub in old_pubs.items():
             if uuid_pub not in new_pubs:
                 changes.append({
                     "entity_type": "publication",
-                    "entity_id": pub["id_course_publish"],
+                    "entity_id": pub.get("id_course_publish"),
                     "uuid": uuid_pub,
                     "action": "DELETE",
                     "reason": "removed",
@@ -216,54 +230,66 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
             old_pub = old_pubs.get(uuid_pub)
             
             if not old_pub:
+                # Publicación nueva
                 changes.append({
                     "entity_type": "publication",
-                    "entity_id": new_pub["id_course_publish"],
+                    "entity_id": new_pub.get("id_course_publish"),
                     "uuid": uuid_pub,
                     "action": "ADD",
                     "old_data": None,
                     "new_data": new_pub
                 })
-            else:
-                # Verificar si el status cambió a false (eliminación lógica)
-                old_status = old_pub.get("status_publish", True)
-                new_status = new_pub.get("status_publish", True)
-                
-                if old_status and not new_status:
-                    # Cambio de status a false = eliminación lógica
-                    changes.append({
-                        "entity_type": "publication",
-                        "entity_id": new_pub["id_course_publish"],
-                        "uuid": uuid_pub,
-                        "action": "DELETE",
-                        "reason": "status_disabled",
-                        "old_data": old_pub,
-                        "new_data": new_pub
-                    })
-                elif (old_pub["name_publication"] != new_pub["name_publication"] or
-                    old_pub["description"] != new_pub["description"]):
-                    changes.append({
-                        "entity_type": "publication",
-                        "entity_id": new_pub["id_course_publish"],
-                        "uuid": uuid_pub,
-                        "action": "UPDATE",
-                        "old_data": old_pub,
-                        "new_data": new_pub
-                    })
+                # Cuando publicación es nueva, todos sus contenidos también son nuevos
+                # No hay que compararlos
+                continue
+            
+            # ✅ DETECTAR ELIMINACIÓN POR STATUS = FALSE
+            old_status = old_pub.get("status_publish", True)
+            new_status = new_pub.get("status_publish", True)
+            
+            if old_status and not new_status:
+                # Cambio de status True → False = ELIMINACIÓN
+                changes.append({
+                    "entity_type": "publication",
+                    "entity_id": new_pub.get("id_course_publish"),
+                    "uuid": uuid_pub,
+                    "action": "DELETE",
+                    "reason": "status_disabled",
+                    "old_data": old_pub,
+                    "new_data": new_pub
+                })
+                continue  # No comparar más propiedades si fue eliminado
+            
+            # Si la publicación existe en ambos y está activa, comparar propiedades
+            if (old_pub.get("name_publication") != new_pub.get("name_publication") or
+                old_pub.get("description") != new_pub.get("description")):
+                changes.append({
+                    "entity_type": "publication",
+                    "entity_id": new_pub.get("id_course_publish"),
+                    "uuid": uuid_pub,
+                    "action": "UPDATE",
+                    "old_data": old_pub,
+                    "new_data": new_pub
+                })
         
-        # 4. Comparar contenidos
-        for uuid_pub, new_pub in new_pubs.items():
+        # 4. Comparar contenidos SOLO para publicaciones que existían en ambos
+        for uuid_pub in old_pubs.keys():
+            if uuid_pub not in new_pubs:
+                # Publicación fue eliminada, skip
+                continue
+            
             old_pub = old_pubs.get(uuid_pub, {})
+            new_pub = new_pubs.get(uuid_pub, {})
             
-            old_contents = {c["uuid_content"]: c for c in old_pub.get("content", [])}
-            new_contents = {c["uuid_content"]: c for c in new_pub.get("content", [])}
+            old_contents = {c.get("uuid_content"): c for c in old_pub.get("content", []) if c.get("uuid_content")}
+            new_contents = {c.get("uuid_content"): c for c in new_pub.get("content", []) if c.get("uuid_content")}
             
-            # Contenidos eliminados (por desaparición o por status = false)
+            # Contenidos eliminados
             for uuid_content, content in old_contents.items():
                 if uuid_content not in new_contents:
                     changes.append({
                         "entity_type": "content",
-                        "entity_id": content["id_content_course_publish"],
+                        "entity_id": content.get("id_content_course_publish"),
                         "uuid": uuid_content,
                         "action": "DELETE",
                         "reason": "removed",
@@ -276,35 +302,37 @@ def compare_snapshots(old_snapshot: Optional[dict], new_snapshot: dict) -> list:
                 old_content = old_contents.get(uuid_content)
                 
                 if not old_content:
+                    # Contenido nuevo
                     changes.append({
                         "entity_type": "content",
-                        "entity_id": new_content["id_content_course_publish"],
+                        "entity_id": new_content.get("id_content_course_publish"),
                         "uuid": uuid_content,
                         "action": "ADD",
                         "old_data": None,
                         "new_data": new_content
                     })
                 else:
-                    # Verificar si el status cambió a false (eliminación lógica)
+                    # ✅ DETECTAR ELIMINACIÓN POR STATUS = FALSE
                     old_status = old_content.get("status", True)
                     new_status = new_content.get("status", True)
                     
                     if old_status and not new_status:
-                        # Cambio de status a false = eliminación lógica
+                        # Cambio de status True → False = ELIMINACIÓN
                         changes.append({
                             "entity_type": "content",
-                            "entity_id": new_content["id_content_course_publish"],
+                            "entity_id": new_content.get("id_content_course_publish"),
                             "uuid": uuid_content,
                             "action": "DELETE",
                             "reason": "status_disabled",
                             "old_data": old_content,
                             "new_data": new_content
                         })
-                    elif (old_content["content"] != new_content["content"] or
-                        old_content["type_content"] != new_content["type_content"]):
+                    elif (old_content.get("content") != new_content.get("content") or
+                        old_content.get("type_content") != new_content.get("type_content")):
+                        # Contenido modificado
                         changes.append({
                             "entity_type": "content",
-                            "entity_id": new_content["id_content_course_publish"],
+                            "entity_id": new_content.get("id_content_course_publish"),
                             "uuid": uuid_content,
                             "action": "UPDATE",
                             "old_data": old_content,
