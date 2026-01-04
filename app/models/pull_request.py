@@ -74,6 +74,13 @@ class PullRequest(Base):
         back_populates="pull_request",
         cascade="all, delete-orphan"
     )
+
+    # 📋 Cambios aplicados (audit trail)
+    applied_changes = relationship(
+        "AppliedChange",
+        back_populates="pull_request",
+        cascade="all, delete-orphan"
+    )
     
     # Índices para búsquedas rápidas
     __table_args__ = (

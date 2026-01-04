@@ -12,10 +12,11 @@ from app.models.user import User
 from app.models.version_course import CourseVersion
 from app.models.theme import Theme
 from app.models.pullRequestChange import PullRequestChange
+from app.models.applied_change import AppliedChange
 
 __all__ = [
     "Course", "ModuleCourse", "CoursePublish", "Favorites",
     "ContentCoursePublish", "Followers", "Notification",
     "PullRequest", "RatingCommentsCourse", "User",
-    "CourseVersion", "Theme"
+    "CourseVersion", "Theme", "PullRequestChange", "AppliedChange"
 ]
