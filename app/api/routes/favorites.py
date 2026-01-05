@@ -8,7 +8,7 @@ from app.models.favorites_course import Favorites
 from app.models.followers import Followers
 from app.schemas.user_schema import UserPublicOut, UserPrivateOut, UserFollow, UserOut
 from app.schemas.course_schema import AuthorResponse
-from app.schemas.messageOut import MessageOut
+from app.schemas.messageOut import MessageResponse
 from typing import List, Optional
 from app.schemas.course_schema import CourseResponse
 from app.schemas.verify_email import EmailIn
@@ -71,7 +71,7 @@ def favorites_user(
     return courses
 
 
-@router.post("/add_delete/{id_course}", response_model=MessageOut)
+@router.post("/add_delete/{id_course}", response_model=MessageResponse)
 def add_delete_favorites(id_course:int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
 
     if not current_user:

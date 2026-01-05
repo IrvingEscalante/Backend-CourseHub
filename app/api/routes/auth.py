@@ -14,7 +14,7 @@ from app.schemas.verify_email import VerifyEmail
 from app.utils.security import hash_password, verify_password, create_access_token
 from datetime import datetime, timedelta
 from app.services.email_services import send_verification_email
-from app.schemas.messageOut import MessageOut
+from app.schemas.messageOut import MessageResponse
 from app.schemas.verify_email import EmailIn
 from app.utils.security import decrypt_email, encrypt_email
 from app.schemas.user_schema import UserOut
@@ -77,7 +77,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/verify-email", response_model=MessageOut)
+@router.post("/verify-email", response_model=MessageResponse)
 def verify_email(data: VerifyEmail, db: Session = Depends(get_db)):
     email_decrypted = decrypt_email(data.email)
     user = db.query(User).filter(User.email == email_decrypted).first()
@@ -109,7 +109,7 @@ def verify_email(data: VerifyEmail, db: Session = Depends(get_db)):
 
 
 
-@router.post("/resend-code", response_model=MessageOut)
+@router.post("/resend-code", response_model=MessageResponse)
 async def resend_code(data:EmailIn, db: Session = Depends(get_db)):
     email_decrypted = decrypt_email(data.email)
     user = db.query(User).filter(User.email == email_decrypted).first()
@@ -159,7 +159,7 @@ async def resend_code(data:EmailIn, db: Session = Depends(get_db)):
 
 
 
-@router.post("/recover-password", response_model=MessageOut)
+@router.post("/recover-password", response_model=MessageResponse)
 async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email.email).first()
     print(email.email)
@@ -176,7 +176,7 @@ async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
         "success": True,
         "message": "Se ha enviado el correo electronico"}
 
-@router.post("/change-password", response_model=MessageOut)
+@router.post("/change-password", response_model=MessageResponse)
 async def change_password(data: PasswordChange, db: Session = Depends(get_db)):
     print(data)
     recover = db.query(RecoverPassword).filter(RecoverPassword.token == data.token).first()

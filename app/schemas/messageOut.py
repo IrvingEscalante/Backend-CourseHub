@@ -1,4 +1,5 @@
 from pydantic import BaseModel
 
-class MessageOut(BaseModel):
+class MessageResponse(BaseModel):
+    success:bool
     message: str

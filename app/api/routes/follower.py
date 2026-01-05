@@ -8,7 +8,6 @@ from app.models.favorites_course import Favorites
 from app.models.followers import Followers
 from app.schemas.user_schema import UserPublicOut, UserPrivateOut, UserFollow, UserOut, UserOutFollow
 from app.schemas.course_schema import AuthorResponse
-from app.schemas.messageOut import MessageOut
 from typing import List, Optional
 from app.schemas.course_schema import CourseResponse
 from app.schemas.verify_email import EmailIn

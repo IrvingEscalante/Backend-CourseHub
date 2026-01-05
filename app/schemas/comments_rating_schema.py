@@ -11,6 +11,10 @@ class RatingCommentsCourseBase(BaseModel):
 class RatingCommentsCourseCreate(RatingCommentsCourseBase):
     pass
 
+class RatingCommentsCourseUpdate(BaseModel):
+    comment_detail: Optional[str] = None
+    rating: Optional[int] = Field(None, ge=1, le=5)
+
 class RatingCommentsCourseResponse(RatingCommentsCourseBase):
     id_ratings_comments: int
     date_created: datetime
