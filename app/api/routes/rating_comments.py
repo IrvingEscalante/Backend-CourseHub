@@ -52,6 +52,18 @@ def delete_rating_by_id(id_rating: int, db: Session = Depends(get_db), current_u
 def create_rating(rating_in: RatingCommentsCourseCreate,db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=403, detail="No puedes realizar la accion, no estas logueado")
+        # Verificar si el usuario ya tiene un comentario en este curso
+    existing_rating = db.query(RatingCommentsCourse).filter(
+        RatingCommentsCourse.id_course == rating_in.id_course,
+        RatingCommentsCourse.id_user == current_user.id,
+        RatingCommentsCourse.status == True
+    ).first()
+
+    if existing_rating:
+        raise HTTPException(
+            status_code=400, 
+            detail="Ya has comentado y calificado este curso. Puedes editar tu comentario y calificación existente."
+        )
 
     new_rating = RatingCommentsCourse(id_course=rating_in.id_course,id_user=current_user.id, comment_detail=rating_in.comment_detail, rating=rating_in.rating)
     db.add(new_rating)

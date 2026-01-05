@@ -31,7 +31,7 @@ def get_detail(
 
     # 2. ¿El curso es mío?
     is_my_course = current_user and detail_course.id_user == current_user.id
-
+    
     # 3. Obtener promedio y total de calificaciones
     avg_rating = (
         db.query(func.avg(RatingCommentsCourse.rating))
@@ -50,8 +50,9 @@ def get_detail(
         )
         .scalar()
     ) or 0
-
+    
     # 4. ¿El usuario lo tiene como favorito?
+    
     is_favorite = False
     is_my_favorite = False
     if current_user:
