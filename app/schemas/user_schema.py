@@ -9,6 +9,7 @@ class UserOut(BaseModel):
     lastname:str
     email: str
     photo:str | None = None
+    back_photo:str | None = None
     biography: str | None = None
     
 class UserEdit(UserOut):
@@ -35,6 +36,7 @@ class UserPublicOut(BaseModel):
     name: Optional[str] = None
     lastname: Optional[str] = None
     photo: Optional[str] = None
+    back_photo: Optional[str] = None
     biography: Optional[str] = None
     date_joined: Optional[datetime] = None
     followers_count : Optional[int] = None

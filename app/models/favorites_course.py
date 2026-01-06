@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from datetime import datetime
+
 
 class Favorites(Base):
 
@@ -9,6 +11,7 @@ class Favorites(Base):
     id_favorite = Column(Integer, primary_key=True, autoincrement=True, index=True)
     id_user = Column(Integer, ForeignKey("user.id"))
     id_course = Column(Integer, ForeignKey("course.id_course"))
+    date_added = Column(DateTime, default=datetime.now)
 
     user = relationship("User", back_populates="favorites")
     course_favorites = relationship("Course", back_populates="favorites")

@@ -20,6 +20,7 @@ from app.services.cloudinary_services import upload_to_cloudinary, save_file_loc
 from app.services.version_services import serialize_course_to_snapshot, compare_snapshots
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
 import asyncio
+from datetime import datetime, timedelta
 from PIL import Image
 import io
 import os
@@ -100,6 +101,7 @@ def get_courses_feed(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
+    
     query = (
         db.query(
             Course,
@@ -125,16 +127,80 @@ def get_courses_feed(
                 Course.description_course.ilike(search_like)
             )
         )
-    type_query = "new"
+    
     # ----------------------------
     # 3. Tipos de ordenamiento
     # ----------------------------
-    if type_query == "new":
+    if type_query == "new" or type_query == "all":
+        # Nuevos: cursos más recientes
         query = query.order_by(Course.date_created.desc())
+    
     elif type_query == "popular":
-        query = query.order_by(func.count(RatingCommentsCourse.id_ratings_comments).desc())
+        # Populares: cursos con más favoritos
+        query = (
+            db.query(
+                Course,
+                func.coalesce(func.avg(RatingCommentsCourse.rating), 0).label("avg_rating"),
+                func.count(RatingCommentsCourse.id_ratings_comments).label("ratings_count"),
+                func.count(Favorites.id_favorite).label("favorites_count")
+            )
+            .outerjoin(
+                RatingCommentsCourse,
+                (RatingCommentsCourse.id_course == Course.id_course) &
+                (RatingCommentsCourse.status == True)
+            )
+            .outerjoin(
+                Favorites,
+                (Favorites.id_course == Course.id_course)
+            )
+            .group_by(Course.id_course)
+        )
+        
+        if search:
+            search_like = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Course.name_course.ilike(search_like),
+                    Course.description_course.ilike(search_like)
+                )
+            )
+        
+        query = query.order_by(func.count(Favorites.id_favorite).desc(), Course.date_created.desc())
+    
     elif type_query == "trending":
-        query = query.order_by(Course.date_created.desc())
+        # Tendencias: cursos con más favoritos en los últimos 30 días
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        
+        query = (
+            db.query(
+                Course,
+                func.coalesce(func.avg(RatingCommentsCourse.rating), 0).label("avg_rating"),
+                func.count(RatingCommentsCourse.id_ratings_comments).label("ratings_count"),
+                func.count(Favorites.id_favorite).label("recent_favorites_count")
+            )
+            .outerjoin(
+                RatingCommentsCourse,
+                (RatingCommentsCourse.id_course == Course.id_course) &
+                (RatingCommentsCourse.status == True)
+            )
+            .outerjoin(
+                Favorites,
+                (Favorites.id_course == Course.id_course) & 
+                (Favorites.date_added >= thirty_days_ago)
+            )
+            .group_by(Course.id_course)
+        )
+        
+        if search:
+            search_like = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Course.name_course.ilike(search_like),
+                    Course.description_course.ilike(search_like)
+                )
+            )
+        
+        query = query.order_by(func.count(Favorites.id_favorite).desc(), Course.date_created.desc())
 
     # ----------------------------
     # 4. Paginación
@@ -151,7 +217,12 @@ def get_courses_feed(
     # 6. Construir respuesta final
     # ----------------------------
     course_list = []
-    for c, avg_rating, ratings_count in results:
+    for result in results:
+        if len(result) > 3:  # popular o trending tienen más columnas
+            c, avg_rating, ratings_count = result[0], result[1], result[2]
+        else:
+            c, avg_rating, ratings_count = result[0], result[1], result[2]
+        
         course_list.append(
             CourseResponse(
                 id_course=c.id_course,

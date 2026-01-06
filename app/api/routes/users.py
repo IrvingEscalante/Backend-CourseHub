@@ -109,6 +109,7 @@ async def edit_profile(
     currentPassword: str | None = Form(None),
     newPassword: str | None = Form(None),
     avatar: UploadFile | None = File(None),
+    back_photo: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -184,6 +185,11 @@ async def edit_profile(
         )
 
         user.photo = avatar_url
+    
+    if back_photo:
+        file_bytes = await back_photo.read()
+        back_photo_url = await upload_to_cloudinary(file_bytes, "profile_images_presets")
+        user.back_photo = back_photo_url
 
 
 
