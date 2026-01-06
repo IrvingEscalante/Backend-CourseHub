@@ -14,7 +14,7 @@ from app.schemas.publish_course_schema import PublishCourseResponse, CreatePubli
 from app.schemas.course_schema import CourseResponse, CourseFullResponse
 from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.favorites_course import Favorites
-from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
+from app.services.cloudinary_services import upload_to_cloudinary, save_file_local
 import json
 
 router = APIRouter()
@@ -67,9 +67,10 @@ async def create_publication(
     contents_metadata debe ser un JSON array con objetos:
     [
         {"type": "image", "file_index": 0},
-        {"type": "video", "url": "https://youtube.com/..."},
+        {"type": "video", "file_index": 1},
+        {"type": "video-embed", "videoUrl": "https://www.youtube.com/watch?v=..."},
         {"type": "note", "text": "Contenido de la nota"},
-        {"type": "file", "file_index": 1}
+        {"type": "file", "file_index": 2}
     ]
     """
     if not current_user:
@@ -110,11 +111,18 @@ async def create_publication(
             file_index = content_item.get("file_index")
             if file_index is not None and file_index < len(files):
                 file = files[file_index]
-                # Comprimir y subir imagen a Cloudinary
-                compressed = await compress_image(file)
-                content_value = await upload_to_cloudinary(compressed, "coursehub_resources_presets")
+                # Subir imagen a Cloudinary (sin compresión local)
+                content_value = await upload_to_cloudinary(file, "coursehub_resources_presets")
         
         elif content_type == "video":
+            file_index = content_item.get("file_index")
+            if file_index is not None and file_index < len(files):
+                file = files[file_index]
+                # Subir video a Cloudinary
+                content_value = await upload_to_cloudinary(file, "coursehub_resources_presets")
+        
+        elif content_type == "video-embed":
+            # Video embebido de YouTube
             content_value = content_item.get("url", "")
         
         elif content_type == "note":
@@ -200,7 +208,8 @@ async def edit_publication(
     contents_metadata debe ser un JSON array con objetos:
     [
         {"type": "image", "file_index": 0},  # Nuevo contenido con archivo
-        {"type": "video", "url": "https://youtube.com/..."},  # Nuevo contenido de video
+        {"type": "video", "file_index": 1},  # Nuevo contenido de video
+        {"type": "video-embed", "videoUrl": "https://www.youtube.com/watch?v=..."},  # Video embebido
         {"type": "note", "text": "Contenido de la nota"},  # Nuevo contenido de nota
         {"type": "image", "existing_id": 123},  # Contenido existente que se mantiene
     ]
@@ -264,11 +273,18 @@ async def edit_publication(
             file_index = content_item.get("file_index")
             if file_index is not None and file_index < len(files):
                 file = files[file_index]
-                # Comprimir y subir imagen a Cloudinary
-                compressed = await compress_image(file)
-                content_value = await upload_to_cloudinary(compressed, "coursehub_resources_presets")
+                # Subir imagen a Cloudinary
+                content_value = await upload_to_cloudinary(file, "coursehub_resources_presets")
         
         elif content_type == "video":
+            file_index = content_item.get("file_index")
+            if file_index is not None and file_index < len(files):
+                file = files[file_index]
+                # Subir video a Cloudinary
+                content_value = await upload_to_cloudinary(file, "coursehub_resources_presets")
+        
+        elif content_type == "video-embed":
+            # Video embebido de YouTube
             content_value = content_item.get("url", "")
         
         elif content_type == "note":

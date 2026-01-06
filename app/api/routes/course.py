@@ -16,7 +16,7 @@ from app.models.content_course_publish import ContentCoursePublish
 from app.models.favorites_course import Favorites
 from typing import List, Optional, Dict
 from app.services.user_services import get_favorite_ids
-from app.services.cloudinary_services import upload_to_cloudinary, save_file_local, compress_image
+from app.services.cloudinary_services import upload_to_cloudinary, save_file_local
 from app.services.version_services import serialize_course_to_snapshot, compare_snapshots
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
 import asyncio
@@ -62,9 +62,8 @@ async def create_course(request: Request,cover: UploadFile = File(None),db: Sess
 
     cover_url = None
     if cover is not None:
-        compressed = await compress_image(cover)
         cover_url = await upload_to_cloudinary(
-            compressed,
+            cover,
             "coursehub_presets"
         )
 
@@ -434,8 +433,7 @@ async def edit_course(
     course.id_theme = payload["topic"]
 
     if cover:
-        compressed = await compress_image(cover)
-        course.image = await upload_to_cloudinary(compressed, "coursehub_presets")
+        course.image = await upload_to_cloudinary(cover, "coursehub_presets")
 
     if not modules_changed:
         db.commit()
@@ -500,8 +498,7 @@ async def edit_course(
                         file.file.seek(0)
 
                         if upload_type == "image":
-                            comp = await compress_image(file)
-                            url = await upload_to_cloudinary(comp, "coursehub_resources_presets")
+                            url = await upload_to_cloudinary(file, "coursehub_resources_presets")
                             type_content = "image"
                         else:
                             ext = file.filename.split(".")[-1].lower()
@@ -557,8 +554,7 @@ async def update_course_basics(
     
     # Procesar imagen si se proporciona
     if cover:
-        compressed = await compress_image(cover)
-        course.image = await upload_to_cloudinary(compressed, "coursehub_presets")
+        course.image = await upload_to_cloudinary(cover, "coursehub_presets")
     
     db.commit()
     db.refresh(course)
