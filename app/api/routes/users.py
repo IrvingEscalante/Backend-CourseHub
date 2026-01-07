@@ -51,12 +51,13 @@ def get_user(
     courses_created = get_courses_created(db, user, favorite_ids) 
     favorites = get_favorite_courses(db, user, current_user, favorite_ids)
 
-
+    isMyProfile = current_user and current_user.id == user.id
 
     user_dict = user.__dict__.copy()
     user_dict.update(follow_data)
     user_dict["courses_create"] = courses_created
     user_dict["courses_favorites"] = favorites
+    user_dict["is_my_profile"] = isMyProfile
 
     if current_user and current_user.id == user.id:
         return UserPrivateOut(**user_dict)

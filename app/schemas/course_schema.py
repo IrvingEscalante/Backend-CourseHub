@@ -49,6 +49,7 @@ class CourseResponse(BaseModel):
 
     avg_rating: Optional[float] = None
     ratings_count: Optional[int] = None
+    ratings_breakdown: Optional[dict] = None
     author: Optional[AuthorResponse] = None
     user: Optional[AuthorResponse] = None
 

@@ -712,3 +712,29 @@ def get_version_diff(
         "changes": changes
     }
 
+@router.put("/courses/{id_course}/deactivate")
+def deactivate_course(
+    id_course: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    
+    # Verificar que el usuario sea el dueño del curso
+    if course.id_user != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para desactivar este curso")
+    
+    # Desactivar el curso
+    course.status_course = False
+    course.date_updated = datetime.utcnow()
+    
+    db.commit()
+    
+    return {
+        "message": "Curso desactivado exitosamente",
+        "id_course": course.id_course,
+        "status_course": course.status_course
+    }

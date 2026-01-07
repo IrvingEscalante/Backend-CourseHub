@@ -33,14 +33,14 @@ def get_detail(
     is_my_course = current_user and detail_course.id_user == current_user.id
     
     # 3. Obtener promedio y total de calificaciones
-    avg_rating = (
+    avg_rating = round((
         db.query(func.avg(RatingCommentsCourse.rating))
         .filter(
             RatingCommentsCourse.id_course == id_course,
             RatingCommentsCourse.status == True
         )
         .scalar()
-    ) or 0
+    ) or 0, 1)
 
     ratings_count = (
         db.query(func.count(RatingCommentsCourse.id_ratings_comments))
@@ -50,6 +50,32 @@ def get_detail(
         )
         .scalar()
     ) or 0
+    
+    # 3.5 Obtener breakdown de calificaciones por estrella
+    ratings_breakdown = {
+        5: {"count": 0, "percentage": 0},
+        4: {"count": 0, "percentage": 0},
+        3: {"count": 0, "percentage": 0},
+        2: {"count": 0, "percentage": 0},
+        1: {"count": 0, "percentage": 0}
+    }
+    
+    if ratings_count > 0:
+        for star in range(1, 6):
+            count = (
+                db.query(func.count(RatingCommentsCourse.id_ratings_comments))
+                .filter(
+                    RatingCommentsCourse.id_course == id_course,
+                    RatingCommentsCourse.rating == star,
+                    RatingCommentsCourse.status == True
+                )
+                .scalar()
+            ) or 0
+            percentage = (count / ratings_count * 100) if ratings_count > 0 else 0
+            ratings_breakdown[star] = {
+                "count": count,
+                "percentage": round(percentage, 2)
+            }
     
     # 4. ¿El usuario lo tiene como favorito?
     
@@ -79,6 +105,7 @@ def get_detail(
     course_schema.is_my_course = bool(is_my_course)
     course_schema.avg_rating = float(avg_rating)
     course_schema.ratings_count = ratings_count
+    course_schema.ratings_breakdown = ratings_breakdown
     course_schema.is_favorite = is_favorite
     course_schema.is_my_favorite = is_my_favorite
     course_schema.status_course = detail_course.status_course
