@@ -111,7 +111,7 @@ def get_courses_feed(
             RatingCommentsCourse,
             (RatingCommentsCourse.id_course == Course.id_course) &
             (RatingCommentsCourse.status == True)
-        )
+        ).filter(Course.status_course == True)
         .group_by(Course.id_course)
     )
 
@@ -712,7 +712,7 @@ def get_version_diff(
         "changes": changes
     }
 
-@router.put("/courses/{id_course}/deactivate")
+@router.put("/courses/{id_course}/deactivate-activate")
 def deactivate_course(
     id_course: int,
     db: Session = Depends(get_db),
@@ -728,13 +728,17 @@ def deactivate_course(
         raise HTTPException(status_code=403, detail="No tienes permiso para desactivar este curso")
     
     # Desactivar el curso
-    course.status_course = False
-    course.date_updated = datetime.utcnow()
-    
+    if course.status_course:
+        course.status_course = False
+        message = "Curso desactivado correctamente"
+    else:
+        course.status_course = True
+        message = "Curso activado correctamente"
+
     db.commit()
     
     return {
-        "message": "Curso desactivado exitosamente",
+        "message": message,
         "id_course": course.id_course,
         "status_course": course.status_course
     }

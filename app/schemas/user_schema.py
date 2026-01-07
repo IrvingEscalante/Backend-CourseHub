@@ -39,7 +39,7 @@ class UserPublicOut(BaseModel):
     back_photo: Optional[str] = None
     biography: Optional[str] = None
     date_joined: Optional[datetime] = None
-    is_my_profile: bool = False
+    is_my_profile: Optional[bool] = False
     followers_count : Optional[int] = None
     following_count : Optional[int] = None
     following : Optional[bool] = None
