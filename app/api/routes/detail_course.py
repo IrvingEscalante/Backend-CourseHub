@@ -6,7 +6,9 @@ from app.models.course import Course
 from app.models.user import User
 from typing import List
 from app.models.module_course import ModuleCourse
+from app.models.pull_request import PullRequest
 from app.utils.security import get_current_user
+from app.schemas.user_schema import UserOut
 from app.schemas.module_course_schema import ModuleCourseResponse, CreateModule, EditModule
 from app.schemas.course_schema import CourseResponse, CourseFullResponse
 from app.models.rating_comments_course import RatingCommentsCourse
@@ -138,3 +140,18 @@ async def get_course_raw(id: int, db: Session = Depends(get_db)):
 def get_course_summary(course_id: int, db: Session = Depends(get_db)):
     result = get_or_generate_summary(course_id, db)
     return result or {"error": result}
+
+@router.get("/collaboratos/{id_course}", response_model=List[UserOut])
+def get_collaborators(id_course:int, db:Session = Depends(get_db)):
+    course = db.query(Course).filter(Course.id_course == id_course).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="No se encontró el curso")
+    
+    users = db.query(User).distinct().join(
+        PullRequest, User.id == PullRequest.id_user
+    ).filter(
+        PullRequest.id_course_target == id_course,
+        PullRequest.merge_status == "merged"
+    ).all()
+    
+    return users
