@@ -13,10 +13,12 @@ from app.models.version_course import CourseVersion
 from app.models.theme import Theme
 from app.models.pullRequestChange import PullRequestChange
 from app.models.applied_change import AppliedChange
+from app.models.course_summary_cache import CourseSummaryCache
 
 __all__ = [
     "Course", "ModuleCourse", "CoursePublish", "Favorites",
     "ContentCoursePublish", "Followers", "Notification",
     "PullRequest", "RatingCommentsCourse", "User",
-    "CourseVersion", "Theme", "PullRequestChange", "AppliedChange"
+    "CourseVersion", "Theme", "PullRequestChange", "AppliedChange",
+    "CourseSummaryCache"
 ]

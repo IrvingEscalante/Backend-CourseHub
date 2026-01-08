@@ -13,6 +13,7 @@ from app.models.rating_comments_course import RatingCommentsCourse
 from app.models.course_publish import CoursePublish
 from app.models.favorites_course import Favorites
 from app.schemas.publish_course import CoursePublishResponse
+from app.services.gemini_services import get_or_generate_summary
 
 router = APIRouter()
 
@@ -132,3 +133,8 @@ async def get_course_raw(id: int, db: Session = Depends(get_db)):
     if not course:
         raise HTTPException(404, "Course not found")
     return course
+
+@router.get("/summary/{course_id}")
+def get_course_summary(course_id: int, db: Session = Depends(get_db)):
+    result = get_or_generate_summary(course_id, db)
+    return result or {"error": result}
