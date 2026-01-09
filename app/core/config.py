@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     API_KEY_CLOUDINARY:str
     API_SECRET_CLOUDINARY:str
     GEMINI_API_KEY:str
+    BREVO_API_KEY: str = ""
+    BREVO_SENDER_EMAIL: str = ""
 
     class Config:
         env_file = ".env"

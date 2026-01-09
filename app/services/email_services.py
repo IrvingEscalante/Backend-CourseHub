@@ -1,19 +1,28 @@
 from fastapi_mail import FastMail, ConnectionConfig, MessageSchema
 from app.core.config import settings
 from datetime import datetime
+from brevo_python import Configuration, ApiClient, TransactionalEmailsApi, SendSmtpEmail
+import asyncio
 
 
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME,
-    MAIL_PASSWORD=settings.MAIL_PASSWORD,
-    MAIL_FROM=settings.MAIL_USERNAME,
-    MAIL_PORT=465,
-    MAIL_SERVER="smtp.gmail.com",
-    MAIL_STARTTLS=False,
-    MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True,
-)
+
+# Configuration for FastMail (Commented - Using Brevo instead)
+# conf = ConnectionConfig(
+#     MAIL_USERNAME=settings.MAIL_USERNAME,
+#     MAIL_PASSWORD=settings.MAIL_PASSWORD,
+#     MAIL_FROM=settings.MAIL_USERNAME,
+#     MAIL_PORT=465,
+#     MAIL_SERVER="smtp.gmail.com",
+#     MAIL_STARTTLS=False,
+#     MAIL_SSL_TLS=True,
+#     USE_CREDENTIALS=True,
+#     VALIDATE_CERTS=True,
+# )
+
+# Brevo Configuration
+brevo_conf = Configuration()
+brevo_conf.api_key["api-key"] = settings.BREVO_API_KEY
+brevo_api_client = ApiClient(brevo_conf)
 
 async def send_verification_email(to_email: str, code: str, full_name_user, link_email_verification: str = ""):
     html_content = f"""
@@ -43,15 +52,20 @@ async def send_verification_email(to_email: str, code: str, full_name_user, link
     </div>
     """
 
-    message = MessageSchema(
+    send_smtp_email = SendSmtpEmail(
+        to=[{"email": to_email, "name": full_name_user}],
+        sender={"name": "CourseHub", "email": settings.BREVO_SENDER_EMAIL},
         subject="Verifica tu correo",
-        recipients=[to_email],
-        body=html_content,
-        subtype="html"
+        html_content=html_content
     )
 
-    fm = FastMail(conf)
-    await fm.send_message(message)
+    try:
+        api_instance = TransactionalEmailsApi(brevo_api_client)
+        response = await asyncio.to_thread(api_instance.send_transac_email, send_smtp_email)
+        return response
+    except Exception as e:
+        raise
+
 
 
 async def send_recover_password(to_email: str, link_recover_password: str = ""):
@@ -75,12 +89,17 @@ async def send_recover_password(to_email: str, link_recover_password: str = ""):
     </div>
     """
 
-    message = MessageSchema(
+    send_smtp_email = SendSmtpEmail(
+        to=[{"email": to_email}],
+        sender={"name": "CourseHub", "email": settings.BREVO_SENDER_EMAIL},
         subject="Recupera tu cuenta",
-        recipients=[to_email],
-        body=html_content,
-        subtype="html"
+        html_content=html_content
     )
 
-    fm = FastMail(conf)
-    await fm.send_message(message)
+    try:
+        api_instance = TransactionalEmailsApi(brevo_api_client)
+        response = await asyncio.to_thread(api_instance.send_transac_email, send_smtp_email)
+        return response
+    except Exception as e:
+        raise
+
