@@ -99,5 +99,4 @@ def get_all_followers_by_user(
                 is_following=is_following
             )
         )
-    print(result)
     return result

@@ -536,8 +536,6 @@ async def update_course_basics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    print(name_course)
-    print(description_course)
     course = db.query(Course).filter(Course.id_course == id_course).first()
     
     if not course:
@@ -586,8 +584,6 @@ def commit_course_version(
     
     if not course:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
-    print(course.id_user)
-    print(current_user.id)
     if course.id_user != current_user.id:
         raise HTTPException(status_code=403, detail="No tienes permiso para hacer commit en este curso")
     

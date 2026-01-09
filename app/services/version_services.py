@@ -389,7 +389,6 @@ def save_changes_to_db(db: Session, pull_request_id: int, changes: list) -> None
             db.add(pr_change)
         
         except Exception as e:
-            print(f"Error al guardar cambio: {str(e)}")
             continue
     
     # Un solo commit al final

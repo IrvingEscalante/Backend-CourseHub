@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+.env.production
 
 # Entornos virtuales
 venv/

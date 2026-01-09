@@ -58,7 +58,6 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     full_name = user.name + ' ' + user.lastname
     email_encrypted = encrypt_email(user.email)
     link = f"{settings.FRONTEND_URL}/verify-email?token={email_encrypted}"
-    print("Este es el link: ", link)
     await send_verification_email(user.email, code, full_name, link)
     return {
         "user": new_user,
@@ -164,7 +163,7 @@ async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email.email).first()
     print(email.email)
     if not user:
-        raise HTTPException(status_code=404, detail="El usuario no esta registrado")
+        raise HTTPException(status_code=404, detail="No hay usuarios asociados a ese correo electrónico")
     token = secrets.token_hex(32)
     new_token = RecoverPassword(id_user = user.id, token=token, date_expired= datetime.now() + timedelta(minutes=10))
     db.add(new_token)
@@ -178,7 +177,6 @@ async def recover_password(email: EmailIn, db: Session = Depends(get_db)):
 
 @router.post("/change-password", response_model=MessageResponse)
 async def change_password(data: PasswordChange, db: Session = Depends(get_db)):
-    print(data)
     recover = db.query(RecoverPassword).filter(RecoverPassword.token == data.token).first()
 
     if not recover:

@@ -56,8 +56,6 @@ def create_pull_request(
         raise HTTPException(status_code=404, detail="Curso source o target no encontrado")
     
     # 2️⃣ Validar que el usuario sea el propietario del curso source
-    print(source_course.id_user)
-    print(current_user.id)
     if source_course.id_user != current_user.id:
         raise HTTPException(
             status_code=403,

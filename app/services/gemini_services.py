@@ -28,11 +28,8 @@ def generate_text(prompt: str) -> str:
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (2 ** attempt)  # backoff exponencial
-                    print(f"Cuota excedida. Esperando {wait_time}s antes de reintentar... (intento {attempt + 1}/{max_retries})")
                     time.sleep(wait_time)
-                    continue
-            
-            print(f"Error generando resumen con Gemini: {e}")
+                    continue            
             raise
 
 
@@ -104,7 +101,6 @@ def get_or_generate_summary(course_id: int, db_session, force_refresh: bool = Fa
     try:
         summary = generate_text(prompt)
     except Exception as e:
-        print(f"Error generando resumen con Gemini: {e}")
         return None
     
     # Guardar o actualizar en caché

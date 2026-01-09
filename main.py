@@ -4,14 +4,14 @@ from app.api.routes import auth
 from app.db.session import Base, engine
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import course, detail_course, users, theme, rating_comments, favorites, follower, pull_request, modules, publications
+from app.core.config import settings
 import app.models 
 #Crear tablas en mysql si no existen
 
 app=FastAPI(title="CourseHub")
 
 origins = [
-    "http://localhost:4200",  # tu frontend Angular
-    "http://localhost:4200"  # opcio
+    settings.FRONTEND_URL
 ]
 
 app.add_middleware(
