@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import auth
 from app.db.session import Base, engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import course, detail_course, users, theme, rating_comments, favorites, follower, pull_request, modules, publications
+from app.api.routes import course, detail_course, users, theme, rating_comments, favorites, follower, pull_request, modules, publications, version
 from app.core.config import settings
 import app.models 
 #Crear tablas en mysql si no existen
@@ -33,3 +33,4 @@ app.include_router(follower.router, prefix="/api/follow", tags=["FollowerFollows
 app.include_router(pull_request.router, prefix="/api/pull-request", tags=["PullRequest"])
 app.include_router(modules.router, prefix="/api/modules", tags=["Modules"])
 app.include_router(publications.router, prefix="/api/publications", tags=["Publications"])
+app.include_router(version.router, prefix="/api/versions", tags=["Versions"])

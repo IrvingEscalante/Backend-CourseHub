@@ -19,7 +19,7 @@ from app.models.pullRequestChange import PullRequestChange
 from app.models.applied_change import AppliedChange
 from typing import List, Optional, Dict
 from app.services.user_services import get_favorite_ids
-from app.services.cloudinary_services import upload_to_cloudinary, save_file_local
+from app.services.cloudinary_services import upload_to_cloudinary
 from app.services.version_services import compare_snapshots, save_changes_to_db
 from app.schemas.course_schema import CourseCreate , CourseResponse, AuthorResponse, CoursePayload, CourseBase
 from app.schemas.pull_request_schema import PullRequestCreate, PullRequestBasicOut
@@ -158,7 +158,7 @@ def get_my_pull_requests(
     ).filter(
         PullRequest.id_user == current_user.id,
         PullRequest.id_course_source == id_course
-    ).all()
+    ).order_by(PullRequest.id_pull_request.desc()).all()
     
     return pull_requests
 

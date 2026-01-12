@@ -17,12 +17,11 @@ from app.schemas.recover_password import PasswordChange
 from app.services.user_services import get_courses_created, get_favorite_courses, get_follow_data, get_user_by_username, get_favorite_ids
 from datetime import datetime, timedelta
 from app.services.email_services import send_recover_password
-from app.services.cloudinary_services import upload_to_cloudinary, save_file_local
+from app.services.cloudinary_services import upload_to_cloudinary
 import asyncio
 from PIL import Image
 
 router = APIRouter()
-
 @router.get("/profile", response_model=UserOut)
 def profile(current_user: User = Depends(get_current_user),db: Session = Depends(get_db)):
     if not current_user:
