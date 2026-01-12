@@ -79,6 +79,53 @@ def get_detail(
                 "count": count,
                 "percentage": round(percentage, 2)
             }
+
+    # Conteo de videos, pdfs, pptx, docx y notas (siempre definidos)
+    from app.models.content_course_publish import ContentCoursePublish
+    num_videos = db.query(func.count(ContentCoursePublish.id_content_course_publish))\
+        .join(CoursePublish, ContentCoursePublish.id_course_publish == CoursePublish.id_course_publish)\
+        .join(ModuleCourse, CoursePublish.id_module == ModuleCourse.id_module)\
+        .filter(ModuleCourse.id_course == id_course)\
+        .filter(CoursePublish.status_publish == True)\
+        .filter(func.lower(ContentCoursePublish.type_content) == "video")\
+        .filter(ContentCoursePublish.status == True)\
+        .scalar() or 0
+
+    num_files = db.query(func.count(ContentCoursePublish.id_content_course_publish))\
+        .join(CoursePublish, ContentCoursePublish.id_course_publish == CoursePublish.id_course_publish)\
+        .join(ModuleCourse, CoursePublish.id_module == ModuleCourse.id_module)\
+        .filter(ModuleCourse.id_course == id_course)\
+        .filter(CoursePublish.status_publish == True)\
+        .filter(func.lower(ContentCoursePublish.type_content) == "file")\
+        .filter(ContentCoursePublish.status == True)\
+        .scalar() or 0
+    
+    num_images = db.query(func.count(ContentCoursePublish.id_content_course_publish))\
+        .join(CoursePublish, ContentCoursePublish.id_course_publish == CoursePublish.id_course_publish)\
+        .join(ModuleCourse, CoursePublish.id_module == ModuleCourse.id_module)\
+        .filter(ModuleCourse.id_course == id_course)\
+        .filter(CoursePublish.status_publish == True)\
+        .filter(func.lower(ContentCoursePublish.type_content) == "image")\
+        .filter(ContentCoursePublish.status == True)\
+        .scalar() or 0
+    
+    num_embed = db.query(func.count(ContentCoursePublish.id_content_course_publish))\
+        .join(CoursePublish, ContentCoursePublish.id_course_publish == CoursePublish.id_course_publish)\
+        .join(ModuleCourse, CoursePublish.id_module == ModuleCourse.id_module)\
+        .filter(ModuleCourse.id_course == id_course)\
+        .filter(CoursePublish.status_publish == True)\
+        .filter(func.lower(ContentCoursePublish.type_content) == "video-embed")\
+        .filter(ContentCoursePublish.status == True)\
+        .scalar() or 0
+
+    num_notes = db.query(func.count(ContentCoursePublish.id_content_course_publish))\
+        .join(CoursePublish, ContentCoursePublish.id_course_publish == CoursePublish.id_course_publish)\
+        .join(ModuleCourse, CoursePublish.id_module == ModuleCourse.id_module)\
+        .filter(ModuleCourse.id_course == id_course)\
+        .filter(CoursePublish.status_publish == True)\
+        .filter(func.lower(ContentCoursePublish.type_content) == "note")\
+        .filter(ContentCoursePublish.status == True)\
+        .scalar() or 0
     
     # 4. ¿El usuario lo tiene como favorito?
     
@@ -113,6 +160,11 @@ def get_detail(
     course_schema.is_my_favorite = is_my_favorite
     course_schema.status_course = detail_course.status_course
     course_schema.date_updated = detail_course.date_updated
+    course_schema.num_videos = num_videos
+    course_schema.num_files = num_files
+    course_schema.num_embed = num_embed
+    course_schema.num_notes = num_notes
+    course_schema.num_images = num_images
 
     return course_schema
 

@@ -53,6 +53,12 @@ class CourseResponse(BaseModel):
     author: Optional[AuthorResponse] = None
     user: Optional[AuthorResponse] = None
 
+    num_videos: Optional[int] = 0
+    num_files: Optional[int] = 0
+    num_embed: Optional[int] = 0
+    num_notes: Optional[int] = 0
+    num_images: Optional[int] = 0
+
     class Config:
         from_attributes = True  
 

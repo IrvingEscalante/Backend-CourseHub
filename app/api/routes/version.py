@@ -32,10 +32,16 @@ def restore_course_version(
     Restaura el curso y sus relaciones (módulos, publicaciones, contenidos) a partir del snapshot de la versión indicada.
     Las eliminaciones son lógicas (status).
     """
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Acceso no autorizado")
     # 1. Obtener la versión y snapshot
     version = db.query(CourseVersion).filter(CourseVersion.id_version == id_version, CourseVersion.id_course == id_course).first()
     if not version or not version.snapshot:
         raise HTTPException(status_code=404, detail="Versión o snapshot no encontrado")
+
+    if version.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="No puedes reestablecer la version a un curso que no te pertenece")
+
 
     snapshot = version.snapshot if isinstance(version.snapshot, dict) else json.loads(version.snapshot)
 
@@ -142,6 +148,8 @@ def get_versions_by_course(
     Obtiene todas las versiones de un curso.
     Retorna lista de versiones ordenadas por version_number descendente (más nuevas primero).
     """
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Acceso no autorizado")
     # Verificar que el curso existe
     course = db.query(Course).filter(Course.id_course == id_course).first()
     if not course:
@@ -149,7 +157,7 @@ def get_versions_by_course(
     
     # Obtener versiones ordenadas descendentemente
     versions = db.query(CourseVersion)\
-        .filter(CourseVersion.id_course == id_course)\
+        .filter(CourseVersion.id_course == id_course,CourseVersion.created_by == current_user.id)\
         .order_by(CourseVersion.version_number.desc())\
         .all()
     
@@ -170,11 +178,14 @@ def get_version(
     Obtiene una versión específica de un curso.
     Retorna todos los datos del snapshot junto con metadatos de la versión.
     """
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Acceso no autorizado")
     # Buscar la versión
     version = db.query(CourseVersion)\
         .filter(
             CourseVersion.id_version == id_version,
-            CourseVersion.id_course == id_course
+            CourseVersion.id_course == id_course,
+            CourseVersion.created_by == current_user.id
         )\
         .first()
     
@@ -196,6 +207,8 @@ def get_latest_version(
     """
     Obtiene la versión más reciente de un curso.
     """
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Acceso no autorizado")
     # Verificar que el curso existe
     course = db.query(Course).filter(Course.id_course == id_course).first()
     if not course:
@@ -203,7 +216,7 @@ def get_latest_version(
     
     # Obtener la versión con el mayor version_number
     latest_version = db.query(CourseVersion)\
-        .filter(CourseVersion.id_course == id_course)\
+        .filter(CourseVersion.id_course == id_course, CourseVersion.created_by == current_user.id)\
         .order_by(CourseVersion.version_number.desc())\
         .first()
     
