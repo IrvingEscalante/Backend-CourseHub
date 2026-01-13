@@ -8,6 +8,7 @@ class AuthorResponse(BaseModel):
     id: int
     username: str
     name: str
+    email: str
     lastname: str
     photo: Optional[str] = None 
     biography: Optional[str] = None
