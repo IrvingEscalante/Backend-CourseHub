@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from app.schemas.user_schema import UserOut
 
 class CourseVersionSnapshot(BaseModel):
     """Esquema para el snapshot JSON almacenado en la BD"""
@@ -28,7 +29,7 @@ class CourseVersionResponse(BaseModel):
     version_number: int
     snapshot: CourseVersionSnapshot
     created_at: datetime
-    created_by: int
+    user : Optional[UserOut]
 
     class Config:
         from_attributes = True

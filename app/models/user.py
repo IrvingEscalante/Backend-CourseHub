@@ -32,5 +32,6 @@ class User(Base):
     following = relationship("Followers", foreign_keys="[Followers.id_user]", back_populates="follower", cascade="all, delete-orphan")
     followers = relationship("Followers", foreign_keys="[Followers.id_user_follow]", back_populates="followed", cascade="all, delete-orphan")
     recover_tokens = relationship("RecoverPassword", back_populates="user")
+    versions_created = relationship("CourseVersion", back_populates="user", foreign_keys='CourseVersion.created_by')
 
 

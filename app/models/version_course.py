@@ -11,12 +11,17 @@ class CourseVersion(Base):
     version_number = Column(Integer, nullable=False)
     snapshot = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.now())
-    created_by = Column(Integer)
+    created_by = Column(Integer, ForeignKey("user.id"))
 
     course = relationship(
         "Course",
         back_populates="versions",
         foreign_keys=[id_course]
+    )
+    user = relationship(
+        "User",
+        back_populates="versions_created",
+        foreign_keys=[created_by]
     )
 
 
