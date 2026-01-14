@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from datetime import datetime
 from app.schemas.content_publish import ContentCoursePublishResponse
@@ -23,3 +23,10 @@ class CoursePublishResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator('content', mode='before')
+    @classmethod
+    def filter_inactive_content(cls, v):
+        if v is None:
+            return None
+        return [item for item in v if item.status == True]
